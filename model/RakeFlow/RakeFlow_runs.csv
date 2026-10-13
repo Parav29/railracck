@@ -1,0 +1,2 @@
+seed,phase,scenario,fleet,rakesPerDay,meanCycle_h,cycles,lineUtil,sidingUtil,tipplerUtil,demurrageRsPerRake,shareRelief,shareBpc,stockMinDays,grp_Ghugus_terminal,grp_Crew_waits,grp_Single-line_waits,grp_Running,grp_Tadali_DN_merge,grp_CSTPS_terminal,grp_UP_path_at_CD,grp_Crew_relief,grp_BPC_detour
+1,3,0,8,4.7000,40.502,135,0.2059,0.7675,0.2186,33751.1,0.0000,0.0444,5.07,12.651,4.465,0.428,1.703,0.113,12.276,7.895,0.000,0.970

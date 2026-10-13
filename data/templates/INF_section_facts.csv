@@ -1,0 +1,7 @@
+item,value,unit,source,confidence,notes
+spur_length_km,14.11,km,Gazette of India 4 Jun 2026,High,
+intermediate_block_stations,0,count,CR Nagpur division list,Medium,confirm with WTT
+loops_ghugus,,count,,Low,ASK CR
+loops_tadali,,count,,Low,ASK CR
+sectional_speed_kmph,,km/h,,Low,ASK CR / WTT
+block_working,,type,,Low,ASK CR

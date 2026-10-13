@@ -1,0 +1,2 @@
+date,plant,capacity_mw,normative_req_kt,actual_consumption_kt,receipt_kt,stock_indigenous_kt,stock_import_kt,stock_days,plf_pct,source_url
+2026-06-02,CSTPS,2920,47.8,31.5,47.5,475.6,114.2,12,57,https://npp.gov.in/public-reports/cea/daily/fuel/02-06-2026/dailyCoal1-2026-06-02.pdf

@@ -1,0 +1,13 @@
+# build outputs
+model/harness/out/
+model/harness/apicheck/
+model/build/_gencheck/
+model/build/roundtrip/*.class
+__pycache__/
+*.class
+# AnyLogic backups and per-run outputs
+*.alp.bak
+model/RakeFlow/*_summary.txt
+.DS_Store
+# course handout (instructor's material, not ours)
+docs/IE305_Simulation_Project_Coal_Rake_Cycle.docx

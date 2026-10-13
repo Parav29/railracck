@@ -1,0 +1,2 @@
+date,plant,rake_id,wagons,arrival_time,placement_time,tippler_id,unload_start,unload_end,release_time,tipplers_working,demurrage_hours,notes,source
+2026-10-01,CSTPS,CC-01,58,17:30,17:45,CHP-D-2,17:50,21:50,22:30,4,0,EXAMPLE ROW - delete,example

@@ -1,0 +1,2 @@
+date,train_id,crew_id,booking_point,signon_time,dep_time,relief_point,relief_time,signoff_time,duty_hours,expired_en_route,wait_for_relief_hours,notes,source
+2026-10-01,CC-01-L,LP-114,Balharshah,12:30,14:15,,,19:10,6.7,N,0,EXAMPLE ROW - delete,example
