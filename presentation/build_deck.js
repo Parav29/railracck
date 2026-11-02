@@ -169,7 +169,7 @@ pres.addSection({ title: "Model" });
   card(s, 0.89, 1.55, 7.3, 2.05, "Stats card");
   stat(s, 1.15, 1.55, 2.3, "115", C.accent1, "passenger trains", "erail timetable, real days of run");
   stat(s, 3.55, 1.55, 2.2, "100", C.accent5, "model parameters", "HARD / SOFT / ASSUMPTION");
-  stat(s, 5.85, 1.55, 2.2, "29", C.accent3, "flagged assumptions", "A-01 … A-29, all tested");
+  stat(s, 5.85, 1.55, 2.2, "29", C.accent3, "flagged assumptions", "A-01 … A-29, each a parameter");
   card(s, 0.89, 3.78, 7.3, 1.62, "Distributions card");
   head(s, 1.11, 3.88, 7, "How inputs enter the model", HX.lgrn);
   bullets(s, 1.11, 4.3, 7.0, 1.05, [
