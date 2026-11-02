@@ -18,13 +18,19 @@ model/
 2. Projects tree -> RakeFlow -> **Simulation** -> Run (green arrow). One animated replication, seed 1,
    33 days (3 warm-up + 30). Speed it up with the toolbar or switch to virtual time.
 3. Multi-run experiments (Parameter Variation, PLE allows them): **Replications30** (seeds 1-30),
-   **E1_FleetSize** (4-14 rakes x 10 seeds), **E2toE7_Scenarios** (scenarios 0-11 x 10 seeds). Each shows a
-   mean +- 95% CI table and writes a `*_summary.txt`.
+   **E1_FleetSize** (4-20 rakes x 10 seeds), **E2toE7_Scenarios** (scenarios 0-18 x 10 seeds). Each shows a
+   mean +- 95% CI table (rakes/day, mean and P90 cycle, utilisations, demurrage, Tadali queue, crew expiries per 100
+   trips, exam h/rake/month) and writes a `*_summary.txt`.
 4. Every run appends a KPI row to `model/RakeFlow/RakeFlow_runs.csv`; the Simulation run also writes
    `RAKE_cycle_log_sim.csv` in the column format of `data/templates/RAKE_cycle_log.csv`.
 
 Change inputs in the Simulation experiment's Parameters (seed, modelPhase, scenario, fleetSize are listed there) or
-on Main's canvas (all 97 parameters, x >= 1600, grouped and described).
+on Main's canvas (all 100 parameters, x >= 1600, grouped and described).
+
+Scenario numbers: 0 parameters as set; 1 RLS; 2 planned DN slot; 3 crew-critical priority; 4 Chandrapur lobby;
+5 doubling; 6/7 tipplers 3/5; 8 loops +1; 9 crew +20%; 10 sidings +1; 11 no through goods; **12 alternating dispatch;
+13 batched dispatch (3 per direction); 14 crew ordered during loading; 15/16/17 exam trigger 3/5/7 days left;
+18 exam at expiry** (12-18 are the what-ifs promised in the proposal deck).
 
 ## What the model does
 
@@ -41,6 +47,13 @@ Controller rules (a single line with two-loop stations dead-locks without them; 
 one TAE loop is always kept for loaded rakes; a loaded rake that cannot get a GGS loop is prepared and leaves from the
 siding; loaded rakes have priority on the single line (A-22); **A-27** an empty is ordered out of CSTPS, and its crew
 booked, only when a TAE loop and a GGS loop are free (line clear needs a clear reception line).
+
+Proposal scenarios (added Nov 2026): **A-28** single-line dispatch when rakes wait at both ends - loaded first
+(A-22, default), alternating, or batches of `batchSize_A28`; **A-29** crew ordered during loading so it should
+arrive when the rake is ready (the A-14 time is drawn at placement; the duty clock starts at sign-on, so an early crew
+burns duty and is relieved if it expires before departure); exam trigger `bpcLookaheadDays` 0/3/5/7.
+New KPIs: P90 cycle time, tonnes/day, time-average queue at the Tadali merge and at the single line, crew expiries
+per 100 crew trips, BPC exam detention hours per rake per month.
 
 New assumptions beyond the brief: A-23 absolute block TAE-CD (default off), A-24 20 through goods trains/day/direction,
 A-25 crew pool 16, A-26 crew travel BPQ->CSTPS tri(0.3, 0.5, 1) h, A-27 above, and `loadingSidings = 2`
@@ -66,6 +79,19 @@ same numbers in both.
 Rebuild everything: `bash model/build/build_all.sh`; experiments: `python3 model/harness/run_experiments.py`.
 
 ## Results (harness, 30 replications, see results/summary_tables.md)
+
+Proposal what-ifs (paired vs baseline 4.77 rakes/day, same seeds):
+
+| what-if | rakes/day | mean / P90 cycle h | verdict |
+|---|---|---|---|
+| Dispatch alternating / batched | 4.77 / 4.77 | 40.3 / 47.1 | no effect: line only 21% busy, rakes almost never wait at both ends at once |
+| Tadali reserved DN slot (E3) | 4.78 | 40.2 / 47.1 | no effect: merge wait already 0.13 h |
+| **Crew ordered during loading** | **5.77 (+1.00 +- 0.06)** | **33.3 / 38.3** | biggest free lever; 0 crew expiries per 100 trips |
+| Exam trigger at expiry / 3 / 5 / 7 days | 4.80 / 4.75 / 4.78 / 4.75 | ~40 | no throughput effect; exam detention 23.2 -> 29.5 h/rake/month as trigger moves earlier |
+| Fleet 8 -> 20 | 4.77 -> 4.84 | 40 -> 99 | flat beyond 8; extra rakes only queue |
+| Doubling (Rs 228 cr) | 4.88 (+0.11) | 39.4 / 45.9 | small |
+| Crew during loading + doubling | 5.78 (+1.01) | 33.2 / 38.3 | doubling adds nothing once the crew rule is fixed |
+
 
 | | value | brief 4.7 target |
 |---|---|---|

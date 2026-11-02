@@ -7,6 +7,17 @@ and run the *Simulation* experiment. How it works, what was verified and the res
 
 ![Where a rake loses time](model/results/fig1_cycle_decomposition.png)
 
+## Submission contents (IE305)
+
+| Required | Where |
+|---|---|
+| AnyLogic model | `model/RakeFlow/RakeFlow.alp` (AnyLogic 8.9.9 PLE): Simulation, Replications30, E1_FleetSize (4-20 rakes), E2toE7_Scenarios (scenarios 0-18) |
+| Support files - data collection | `research/` (15 sourced notes + `timetable_tadali_chandrapur.csv`, 115 trains), `data/RakeFlow_Parameter_Sheet.xlsx`, `data/templates/` (8 field-data templates), `docs/Data_Request_Letter_CR_WCL.md`, `docs/MODEL_BRIEF.md`, `scripts/build_param_sheet.py` |
+| Support files - analysis | `model/harness/` (same Java run outside AnyLogic, invariant checks, `run_experiments.py`, `plots.py`), `model/build/` (generator), `model/results/` (`summary_tables.md`, `runs_all.csv`, figures) |
+| Presentation slides | `presentation/RakeFlow_Final_Presentation.pptx` (built by `presentation/build_deck.js`); proposal deck as submitted: `presentation/Coal_Rake_Cycle_IE305_initial_proposal.pptx` |
+
+No Central Railway / WCL records were received; every input is a public source or a flagged assumption (A-01..A-29).
+
 Project folder layout
 
 ```

@@ -8,13 +8,13 @@ GROUPS = [
     ("Run control", [
         ("seed", "int", "1", "Random seed for the model's own stream (common random numbers across scenarios)"),
         ("modelPhase", "int", "3", "1 = core cycle, 2 = + crew duty clock, 3 = + BPC exam detours (full)"),
-        ("scenario", "int", "0", "0 = parameters as set; 1 RLS, 2 planned DN slot, 3 crew-critical priority, 4 Chandrapur lobby, 5 doubling, 6 tipplers 3, 7 tipplers 5, 8 loops +1, 9 crew +20%, 10 sidings +1, 11 no through goods"),
+        ("scenario", "int", "0", "0 = parameters as set; 1 RLS, 2 planned DN slot, 3 crew-critical priority, 4 Chandrapur lobby, 5 doubling, 6 tipplers 3, 7 tipplers 5, 8 loops +1, 9 crew +20%, 10 sidings +1, 11 no through goods, 12 alternating dispatch, 13 batched dispatch, 14 crew ordered at loading, 15/16/17 exam trigger 3/5/7 days left, 18 exam at expiry"),
         ("warmupDays", "double", "3", "Warm-up discarded from statistics (brief 4.1)"),
         ("runDays", "double", "30", "Statistics window after warm-up (brief 4.1); the experiment stop time is warm-up + run"),
         ("writeCycleLog", "boolean", "true", "Write RAKE_cycle_log_sim.csv (template data/templates/RAKE_cycle_log.csv) and RakeFlow_runs.csv"),
     ]),
     ("Fleet and Ghugus end", [
-        ("fleetSize", "int", "8", "A-18 ASSUMPTION closed-circuit rakes on this circuit (decision variable, E1: 4-14)"),
+        ("fleetSize", "int", "8", "A-18 ASSUMPTION closed-circuit rakes on this circuit (decision variable, E1: 4-20)"),
         ("loadingSidings", "int", "2", "ASSUMPTION loading lines at Ghugus worked at once: two CHPs (LD-02) and two sidings (INF-07); 2 x tri(4,6,9) h gives ~7.6 rakes/day = LD-01 7-8 rakes/day"),
         ("ghugusLoops_A01", "int", "2", "A-01 ASSUMPTION loops at GGS for stabling loaded/empty rakes"),
         ("loadingByRLS_LD04", "boolean", "false", "E2: false = pay-loader/CHP LD-03 tri(4,6,9) h; true = rapid loading silo LD-04 tri(1,1.5,3) h"),
@@ -47,6 +47,8 @@ GROUPS = [
         ("latenessMean_A21", "double", "30", "A-21 ASSUMPTION passenger lateness lognormal mean (minutes)"),
         ("latenessSd_A21", "double", "30", "A-21 sd (minutes)"),
         ("controllerHoldsEmptiesAtCD_A27", "boolean", "true", "A-27 ASSUMPTION the controller orders an empty (and books its crew) out of CSTPS only when a TAE loop and a GGS loop are free - absolute block line-clear needs a clear reception line"),
+        ("dispatchPolicy_A28", "int", "0", "A-28 ASSUMPTION single-line dispatch when rakes wait at both ends: 0 = loaded first (A-22), 1 = alternate directions, 2 = batches of batchSize_A28 moves per direction"),
+        ("batchSize_A28", "int", "3", "A-28 moves in one direction before the other side gets the line (dispatch rule 2)"),
         ("pathPolicy", "int", "0", "E3: 0 = FCFS, loaded first on the single line (A-22); 1 = plan the DN path first and order the crew to match; 2 = priority to crews with < 2 h left"),
     ]),
     ("Main line and CSTPS end", [
@@ -69,6 +71,7 @@ GROUPS = [
     ("Crew (phase 2)", [
         ("crewPoolSize_A25", "int", "16", "A-25 ASSUMPTION crews available to this circuit at the lobby"),
         ("crewAtChandrapur_A06", "boolean", "false", "E4 / A-06: false = crew booked at Balharshah, true = local Chandrapur lobby (0.5 h travel)"),
+        ("crewOrderedAtLoading_A29", "boolean", "false", "A-29 ASSUMPTION false = crew ordered when the loaded rake is ready (today); true = ordered during loading so it arrives as the rake is ready (duty clock starts at sign-on either way)"),
         ("localLobbyTravel_A06", "double", "0.5", "E4 travel Chandrapur lobby -> Ghugus (h)"),
         ("signOnMin_A08", "double", "0.5", "A-08 ASSUMPTION sign-on to departure, min (h), CAG 47/2015"),
         ("signOnMode_A08", "double", "0.75", "A-08 mode (h)"),
@@ -93,7 +96,7 @@ GROUPS = [
         ("bpcKm_BPC01", "double", "6000", "BPC-01 HARD closed-circuit BPC validity (km)"),
         ("bpcDays_BPC01", "double", "30", "BPC-01 validity (days)"),
         ("bpcGraceDays", "double", "5", "BPC-01 +5 days grace when moving toward base depot"),
-        ("bpcLookaheadDays", "double", "1", "ASSUMPTION send the rake for exam when validity has < this many days left"),
+        ("bpcLookaheadDays", "double", "1", "ASSUMPTION send the rake for exam when validity has < this many days left (exam-trigger experiment: 0 = at expiry, 3, 5, 7)"),
         ("depotKm_A10", "double", "14", "A-10 ASSUMPTION base depot Balharshah, CD -> BPQ (km)"),
         ("depotPathWait_A10", "double", "0.5", "A-10 ASSUMPTION path wait each way for the depot trip (h); main line beyond CD is not modelled (brief 4.9)"),
         ("examWaitMin_A11", "double", "0.5", "A-11 ASSUMPTION wait at depot before exam placement, min (h)"),

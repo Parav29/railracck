@@ -54,6 +54,8 @@ class Rake {
     double bpcKm, bpcDue;
     boolean bpcThisCycle, reliefThisCycle;
     double crewHoursLoaded;
+    boolean crewPreOrdered, crewOnBoardEarly, readyDone;   // A-29 crew ordered during loading
+    double readyDur = -1;                                   // pre-drawn A-14 time when the crew is ordered during loading
     double[] stamp = new double[18];   // timestamps for the RAKE_cycle_log export
 }
 
@@ -110,6 +112,10 @@ int lastGeneratedDay = -2;
 int cFleet, cSidings, cGgsLoops, cTaeLoops, cTipplers, cCrewPool, cPolicy, cPhase;
 boolean cDoubled, cRls, cCrewOn, cBpcOn, cLocalLobby, cAllowExt, cAbsBlock;
 double cThroughPerDay;
+int cDispatch, cBatch;            // A-28 single-line dispatch rule: 0 loaded first, 1 alternating, 2 batched
+boolean cCrewAtLoad;              // A-29 crew ordered during loading so it arrives as the rake is ready
+double cBpcLook;                  // BPC exam trigger: days of validity left
+int lastDir = -1, batchN;         // last single-line move direction (0 loaded GGS->TAE, 1 empty TAE->GGS) and run length
 
 // ---- statistics (reset at the end of warm-up) ----
 double statsStart, lastTouch;
@@ -119,6 +125,8 @@ double tonnes, sumCycle, sumCycleSq, demurrageRs, demurrageLoadRs, demurrageUnlo
 double[] compSum = new double[NPH];
 double areaLineDN, areaLineUP, areaSidings, areaTipplers, areaGgsLoops, areaTaeLoops, areaCrewOnDuty;
 double mergeWaitSum; int mergeCount;
+double areaMergeQ, areaLineQ, areaBpc; int maxMergeQ;
+java.util.ArrayList<Double> cycleTimes = new java.util.ArrayList<Double>();
 double dutySum; int reliefCycles, bpcCycles;
 java.util.ArrayList<Double> deliveryTimes = new java.util.ArrayList<Double>();
 
@@ -231,6 +239,8 @@ cFleet = fleetSize; cSidings = loadingSidings; cGgsLoops = ghugusLoops_A01; cTae
 cTipplers = tipplersInService_A17; cCrewPool = crewPoolSize_A25; cPolicy = pathPolicy; cPhase = modelPhase;
 cDoubled = lineDoubled_INF04; cRls = loadingByRLS_LD04; cLocalLobby = crewAtChandrapur_A06;
 cAllowExt = allowDutyExtension_CR02; cAbsBlock = absoluteBlockTAE_CD_A23; cThroughPerDay = throughGoodsPerDay_A24;
+cDispatch = dispatchPolicy_A28; cBatch = Math.max(1, batchSize_A28); cCrewAtLoad = crewOrderedAtLoading_A29;
+cBpcLook = bpcLookaheadDays;
 applyScenario(scenario);
 cCrewOn = cPhase >= 2;
 cBpcOn = cPhase >= 3;
@@ -276,6 +286,13 @@ switch (s) {
     case 9: cCrewPool = (int) Math.ceil(cCrewPool * 1.2); break;   // E7 crew +20%
     case 10: cSidings += 1; break;                       // E7 loading sidings +1
     case 11: cThroughPerDay = 0; break;                  // sensitivity: no through goods on main line
+    case 12: cDispatch = 1; break;                       // dispatch: alternate directions on the single line
+    case 13: cDispatch = 2; break;                       // dispatch: batches of batchSize_A28 moves per direction
+    case 14: cCrewAtLoad = true; break;                  // crew ordered during loading (A-29)
+    case 15: cBpcLook = 3; break;                        // exam trigger: 3 days of validity left
+    case 16: cBpcLook = 5; break;                        // exam trigger: 5 days left
+    case 17: cBpcLook = 7; break;                        // exam trigger: 7 days left
+    case 18: cBpcLook = 0; break;                        // exam trigger: at expiry
     default: break;
 }
 //@end
@@ -367,6 +384,7 @@ java.util.Arrays.fill(r.stamp, -1);
 r.stamp[S_ARR_GGS] = time();
 r.bpcThisCycle = false;
 r.reliefThisCycle = false;
+r.crewPreOrdered = false; r.crewOnBoardEarly = false; r.readyDone = false; r.readyDur = -1;
 r.loaded = false;
 r.loc = L_GGS;
 setPhase(r, P_PLACE_GGS, -1);
@@ -395,6 +413,12 @@ double lt = cRls ? rTri(loadRlsMin_LD04, loadRlsMode_LD04, loadRlsMax_LD04)
                  : rTri(loadMin_LD03, loadMode_LD03, loadMax_LD03);
 setPhase(r, P_LOAD, time() + lt);
 schedAfter(lt, () -> loadDone(r));
+if (cCrewAtLoad && cCrewOn && cPolicy != 1) {
+    // A-29: draw the release->ready time now and order the crew so it should arrive just as the rake is ready
+    r.readyDur = rTri(readyMin_A14, readyMode_A14, readyMax_A14);
+    double orderAt = time() + lt + r.readyDur - expectedCrewLead(true);
+    schedAt(Math.max(time(), orderAt), () -> preOrderCrew(r));
+}
 return true;
 //@end
 
@@ -406,7 +430,8 @@ r.stamp[S_RELEASED] = time();
 chargeDemurrage(time() - r.placedAt, freeTimeLoad_FT01, true);
 if (ggsLoopUsed < cGgsLoops) { ggsLoopUsed++; r.holdsGgsLoop = true; releaseSiding(r); }
 setPhase(r, P_READY_GGS, -1);
-schedAfter(rTri(readyMin_A14, readyMode_A14, readyMax_A14), () -> readyGGS(r));
+double rd = r.readyDur >= 0 ? r.readyDur : rTri(readyMin_A14, readyMode_A14, readyMax_A14);
+schedAfter(rd, () -> readyGGS(r));
 dispatch();
 //@end
 
@@ -434,6 +459,13 @@ return false;
 //@fn void readyGGS(Rake r)
 //@doc Loaded rake ready to leave Ghugus (A-14 done): ask for a crew. Policy 1 first plans the DN path at Tadali and orders the crew to match it.
 r.stamp[S_LOCO] = time();
+r.readyDone = true;
+if (r.crewPreOrdered) {
+    // A-29: crew was ordered during loading; go if it is already on the train, else wait for it
+    if (r.crewOnBoardEarly) { setPhase(r, P_WAIT_PATH_GGS, -1); qDepartGGS.add(r); dispatch(); }
+    else setPhase(r, P_WAIT_CREW_L, -1);
+    return;
+}
 if (cPolicy == 1 && cCrewOn) {
     double lead = expectedCrewLead(true);
     double spur = spurOccMode_A04 / 60.0;
@@ -499,6 +531,7 @@ return true;
 //@fn void crewReady(Rake r)
 //@doc Crew is on the train: resume according to where the rake stands.
 r.needRelief = false;
+if (r.loc == L_GGS && r.crewPreOrdered && !r.readyDone) { r.crewOnBoardEarly = true; return; }   // A-29: crew waits on the train, duty clock running
 if (r.loc == L_GGS) { setPhase(r, P_WAIT_PATH_GGS, -1); qDepartGGS.add(r); }
 else if (r.loc == L_TAE && r.loaded) { planMerge(r); }
 else if (r.loc == L_TAE) { setPhase(r, P_WAIT_LINE_TAE, -1); qLineTAE.add(r); }
@@ -531,6 +564,13 @@ r.crew = null;
 r.token++;
 reliefEvents++;
 r.reliefThisCycle = true;
+if (r.crewPreOrdered && !r.readyDone) {
+    // A-29: an early crew ran out of duty before the rake was ready; order another without touching the rake's phase
+    r.crewOnBoardEarly = false;
+    qCrew.add(r);
+    dispatch();
+    return;
+}
 if (r.planned != null) { (r.loaded ? dnBlock : upBlock).remove(r.planned); r.planned = null; }
 qDepartGGS.remove(r);
 qLineTAE.remove(r);
@@ -557,8 +597,16 @@ schedAfter(back + rest, () -> { cc.busy = false; dispatch(); });
 
 //@fn boolean allocLine()
 //@doc Single-line controller (A-22): loaded rakes from GGS first (needs a TAE loop), then empties from TAE (needs a GGS loop). Doubling (E5) gives each direction its own line.
+boolean canL = !lineBusyDN && !(!cDoubled && lineBusyUP) && !qDepartGGS.isEmpty() && taeLoopLoaded + taeLoopEmpty < cTaeLoops;
+boolean canE = !lineBusyUP && !(!cDoubled && lineBusyDN) && !qLineTAE.isEmpty() && ggsLoopUsed < cGgsLoops;
+// A-28 dispatch rule when both directions could go on a single line: 0 loaded first (A-22), 1 alternate, 2 batches
+boolean preferE = false;
+if (!cDoubled && canL && canE) {
+    if (cDispatch == 1) preferE = lastDir == 0;
+    else if (cDispatch == 2) preferE = lastDir == 0 ? batchN >= cBatch : (lastDir == 1 && batchN < cBatch);
+}
 // loaded GGS -> TAE
-if (!lineBusyDN && !(!cDoubled && lineBusyUP) && !qDepartGGS.isEmpty() && taeLoopLoaded + taeLoopEmpty < cTaeLoops) {
+if (canL && !preferE) {
     Rake r = pickLoaded();
     boolean emptyFirst = false;
     if (cPolicy == 2 && !cDoubled && !qLineTAE.isEmpty() && ggsLoopUsed < cGgsLoops) {
@@ -569,6 +617,7 @@ if (!lineBusyDN && !(!cDoubled && lineBusyUP) && !qDepartGGS.isEmpty() && taeLoo
         double occ = rTri(spurOccMin_A04, spurOccMode_A04, spurOccMax_A04) / 60.0;
         if (cCrewOn && time() + occ > dutyLimitFor(r.crew)) { relieve(r); return true; }
         qDepartGGS.remove(r);
+        noteDir(0);
         lineBusyDN = true;
         taeLoopLoaded++;
         r.holdsTaeLoop = true;
@@ -594,6 +643,7 @@ if (!lineBusyUP && !(!cDoubled && lineBusyDN) && !qLineTAE.isEmpty() && ggsLoopU
     double occ = rTri(spurOccMin_A04, spurOccMode_A04, spurOccMax_A04) / 60.0;
     if (cCrewOn && time() + occ > dutyLimitFor(r.crew)) { relieve(r); return true; }
     qLineTAE.remove(0);
+    noteDir(1);
     lineBusyUP = true;
     ggsLoopUsed++;
     r.holdsGgsLoop = true;
@@ -709,7 +759,7 @@ dispatch();
 //@doc Empty ready at CSTPS: divert to the BPC exam if due (phase 3), otherwise ask for a crew.
 r.loc = L_CD;
 r.loaded = false;
-if (cBpcOn && (time() >= r.bpcDue - bpcLookaheadDays * 24 || r.bpcKm < 2 * (spurKm_INF01 + mainKm_INF08) + 2 * depotKm_A10)) {
+if (cBpcOn && (time() >= r.bpcDue - cBpcLook * 24 || r.bpcKm < 2 * (spurKm_INF01 + mainKm_INF08) + 2 * depotKm_A10)) {
     goBpc(r);
     return;
 }
@@ -827,6 +877,7 @@ if (r.cycleStart >= statsStart && statsStart > 0) {
     cyclesDone++;
     sumCycle += ct;
     sumCycleSq += ct * ct;
+    cycleTimes.add(ct);
     for (int k = 0; k < NPH; k++) compSum[k] += r.comp[k];
     if (r.reliefThisCycle) reliefCycles++;
     if (r.bpcThisCycle) bpcCycles++;
@@ -864,6 +915,14 @@ if (dt > 0 && t > statsStart) {
     int onDuty = 0;
     for (Crew c : crews) if (c.rake != null) onDuty++;
     areaCrewOnDuty += onDuty * dt;
+    int mq = 0, lq = 0, bp = 0;
+    for (Rake r : rakes) {
+        if (r.phase == P_WAIT_MERGE_DN) mq++;
+        if (r.phase == P_WAIT_PATH_GGS || r.phase == P_WAIT_LINE_TAE) lq++;
+        if (r.phase == P_BPC) bp++;
+    }
+    areaMergeQ += mq * dt; areaLineQ += lq * dt; areaBpc += bp * dt;
+    if (mq > maxMergeQ) maxMergeQ = mq;
 }
 lastTouch = t;
 //@end
@@ -878,6 +937,7 @@ tonnes = 0; sumCycle = 0; sumCycleSq = 0; demurrageRs = 0; demurrageLoadRs = 0; 
 java.util.Arrays.fill(compSum, 0);
 areaLineDN = 0; areaLineUP = 0; areaSidings = 0; areaTipplers = 0; areaGgsLoops = 0; areaTaeLoops = 0; areaCrewOnDuty = 0;
 mergeWaitSum = 0; mergeCount = 0; dutySum = 0; reliefCycles = 0; bpcCycles = 0;
+areaMergeQ = 0; areaLineQ = 0; areaBpc = 0; maxMergeQ = 0; cycleTimes.clear();
 deliveryTimes.clear();
 stockMinDays = stockKt / normativeDaily_kt;
 daysBelow7 = 0;
@@ -896,6 +956,47 @@ return statsStart <= 0 ? 0 : delivered / (statHours() / 24.0);
 //@fn double meanCycle()
 //@doc KPI 1: mean rake cycle time (h), GGS arrival to next GGS arrival.
 return cyclesDone == 0 ? 0 : sumCycle / cyclesDone;
+//@end
+
+//@fn double p90Cycle()
+//@doc KPI 1: 90th percentile of rake cycle time (h).
+if (cycleTimes.isEmpty()) return 0;
+java.util.ArrayList<Double> v = new java.util.ArrayList<Double>(cycleTimes);
+java.util.Collections.sort(v);
+return v.get(Math.min(v.size() - 1, (int) Math.ceil(0.9 * v.size()) - 1));
+//@end
+
+//@fn double mergeQueueAvg()
+//@doc KPI: time-average number of loaded rakes waiting in the Tadali loops for a DN path.
+return statsStart <= 0 ? 0 : areaMergeQ / statHours();
+//@end
+
+//@fn double lineQueueAvg()
+//@doc KPI: time-average number of rakes waiting for the single line (at GGS or TAE).
+return statsStart <= 0 ? 0 : areaLineQ / statHours();
+//@end
+
+//@fn double crewExpiriesPer100()
+//@doc KPI: crew duty expiries (reliefs) per 100 crew trips.
+return crewTrips == 0 ? 0 : 100.0 * reliefEvents / crewTrips;
+//@end
+
+//@fn double examHoursPerRakeMonth()
+//@doc KPI: hours per rake per 30-day month spent on the BPC exam detour (travel, wait, exam).
+return statsStart <= 0 ? 0 : areaBpc / cFleet / (statHours() / 720.0);
+//@end
+
+//@fn void noteDir(int d)
+//@doc Remember the direction of the move just given the single line (for the A-28 alternating / batched rules).
+if (d == lastDir) batchN++; else { lastDir = d; batchN = 1; }
+//@end
+
+//@fn void preOrderCrew(Rake r)
+//@doc A-29: order the crew for a rake that is still loading, unless the rake is already ready or has one.
+if (r.readyDone || r.crew != null || qCrew.contains(r) || r.loc != L_GGS) return;
+r.crewPreOrdered = true;
+qCrew.add(r);
+dispatch();
 //@end
 
 //@fn double compMean(int k)
@@ -957,21 +1058,21 @@ return n;
 String s = String.format(java.util.Locale.US,
     "Day %.1f   %s   (stats from day %.0f)\n\n" +
     "Rakes placed at CSTPS   %d   =  %.2f rakes/day   (%.1f kt/day)\n" +
-    "Mean cycle time         %.1f h   over %d cycles\n" +
+    "Mean cycle time         %.1f h   (P90 %.1f h)   over %d cycles\n" +
     "Single line busy        %.0f %%     Sidings busy %.0f %%     Tipplers busy %.0f %%\n" +
-    "Mean wait for DN path   %.2f h at Tadali\n" +
+    "Mean wait for DN path   %.2f h at Tadali   (queue avg %.2f, max %d)\n" +
     "Demurrage               Rs %.0f per rake  (loading %d/%d over FT, unloading %d/%d)\n" +
-    "Crew relief cycles      %.0f %%   duty extensions %d\n" +
-    "BPC detour cycles       %.0f %%   overdue exams %d\n" +
+    "Crew relief cycles      %.0f %%   duty extensions %d   expiries per 100 trips %.1f\n" +
+    "BPC detour cycles       %.0f %%   overdue exams %d   exam h/rake/month %.1f\n" +
     "CSTPS stock             %.1f days  (min %.1f, days below 7: %d)",
     time() / 24, stampText(time()), statsStart / 24,
     delivered, rakesPerDay(), rakesPerDay() * payload_t / 1000,
-    meanCycle(), cyclesDone,
+    meanCycle(), p90Cycle(), cyclesDone,
     100 * lineUtil(), 100 * sidingUtil(), 100 * tipplerUtil(),
-    mergeCount == 0 ? 0 : mergeWaitSum / mergeCount,
+    mergeCount == 0 ? 0 : mergeWaitSum / mergeCount, mergeQueueAvg(), maxMergeQ,
     demurragePerRake(), loadOverFree, loadEnds, unloadOverFree, unloadEnds,
-    100 * shareRelief(), extensions,
-    100 * shareBpc(), bpcOverdue,
+    100 * shareRelief(), extensions, crewExpiriesPer100(),
+    100 * shareBpc(), bpcOverdue, examHoursPerRakeMonth(),
     stockDays(), stockMinDays == Double.POSITIVE_INFINITY ? stockDays() : stockMinDays, daysBelow7);
 return s;
 //@end
@@ -1139,12 +1240,15 @@ try {
     if (header) {
         StringBuilder h = new StringBuilder("seed,phase,scenario,fleet,rakesPerDay,meanCycle_h,cycles,lineUtil,sidingUtil,tipplerUtil,demurrageRsPerRake,shareRelief,shareBpc,stockMinDays");
         for (int g = 0; g < GRP_NAME.length; g++) h.append(",grp_").append(GRP_NAME[g].replace(' ', '_'));
+        h.append(",p90Cycle_h,tonnesPerDay,mergeQueueAvg,lineQueueAvg,crewExpiriesPer100Trips,examHoursPerRakeMonth");
         w.println(h);
     }
     StringBuilder s = new StringBuilder(String.format(java.util.Locale.US, "%d,%d,%d,%d,%.4f,%.3f,%d,%.4f,%.4f,%.4f,%.1f,%.4f,%.4f,%.2f",
         seed, cPhase, scenario, cFleet, rakesPerDay(), meanCycle(), cyclesDone, lineUtil(), sidingUtil(), tipplerUtil(),
         demurragePerRake(), shareRelief(), shareBpc(), stockMinDays));
     for (int g = 0; g < GRP_NAME.length; g++) s.append(String.format(java.util.Locale.US, ",%.3f", groupMean(g)));
+    s.append(String.format(java.util.Locale.US, ",%.3f,%.0f,%.4f,%.4f,%.3f,%.3f", p90Cycle(), rakesPerDay() * payload_t,
+        mergeQueueAvg(), lineQueueAvg(), crewExpiriesPer100(), examHoursPerRakeMonth()));
     w.println(s);
     w.close();
     if (writeCycleLog) {

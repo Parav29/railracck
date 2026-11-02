@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RES = os.path.join(os.path.dirname(HERE), "results")
-JAVA = "/Applications/AnyLogic 8 PLE.app/Contents/jre/bin/java"
+JAVA = os.environ.get("RAKEFLOW_JAVA", "/Applications/AnyLogic 8 PLE.app/Contents/jre/bin/java")
 REPS = 30
 T29 = 2.045
 
@@ -19,7 +19,7 @@ EXPERIMENTS = [
         ("P2 + crew duty clock", "modelPhase=2"),
         ("P3 + BPC exam detours (baseline)", "modelPhase=3"),
     ]),
-    ("E1 fleet size (A-18)", [(f"fleet {n}", f"fleetSize={n}") for n in (4, 6, 8, 10, 12, 14)]),
+    ("E1 fleet size (A-18)", [(f"fleet {n}", f"fleetSize={n}") for n in (4, 6, 8, 10, 12, 14, 16, 18, 20)]),
     ("E2-E7 levers (one at a time vs baseline)", [
         ("baseline", "scenario=0"),
         ("E2 RLS/silo loading (LD-04)", "scenario=1"),
@@ -33,6 +33,22 @@ EXPERIMENTS = [
         ("E7 crew pool +20%", "scenario=9"),
         ("E7 loading sidings +1", "scenario=10"),
         ("no through goods on main line (A-24 = 0)", "scenario=11"),
+    ]),
+    ("Proposal scenarios (submitted deck): dispatch, crew booking, exam trigger", [
+        ("baseline (loaded first, crew when ready, exam 1 day left)", "scenario=0"),
+        ("Dispatch: alternating directions", "scenario=12"),
+        ("Dispatch: batches of 3", "scenario=13"),
+        ("Crew ordered during loading (A-29)", "scenario=14"),
+        ("Exam trigger: at expiry", "scenario=18"),
+        ("Exam trigger: 3 days left", "scenario=15"),
+        ("Exam trigger: 5 days left", "scenario=16"),
+        ("Exam trigger: 7 days left", "scenario=17"),
+    ]),
+    ("Line doubling vs best operating policy (free levers)", [
+        ("baseline (single line)", "scenario=0"),
+        ("Doubling only (Rs 228 cr)", "scenario=5"),
+        ("Best free policy: crew ordered during loading", "crewOrderedAtLoading_A29=true"),
+        ("Best free policy + doubling", "crewOrderedAtLoading_A29=true lineDoubled_INF04=true"),
     ]),
     ("Assumption sensitivity", [
         ("baseline", "scenario=0"),
@@ -48,6 +64,8 @@ EXPERIMENTS = [
         ("CR-02 no duty extension", "allowDutyExtension_CR02=false"),
     ]),
     ("Combinations to reach LD-01 (7-8 rakes/day)", [
+        ("crew at loading + loops +1", "scenario=8 crewOrderedAtLoading_A29=true"),
+        ("crew at loading + loops +1 + RLS", "scenario=8 crewOrderedAtLoading_A29=true loadingByRLS_LD04=true"),
         ("loops +1 + Chandrapur lobby", "scenario=8 crewAtChandrapur_A06=true"),
         ("loops +1 + lobby + RLS", "scenario=8 crewAtChandrapur_A06=true loadingByRLS_LD04=true"),
         ("loops +1 + lobby + RLS, fleet 10", "scenario=8 crewAtChandrapur_A06=true loadingByRLS_LD04=true fleetSize=10"),
@@ -56,10 +74,12 @@ EXPERIMENTS = [
     ]),
 ]
 
-KPIS = [("rakesPerDay", "rakes/day", "{:.2f}"), ("meanCycle_h", "cycle h", "{:.1f}"), ("lineUtil", "line util", "{:.0%}"),
+KPIS = [("rakesPerDay", "rakes/day", "{:.2f}"), ("meanCycle_h", "cycle h", "{:.1f}"), ("p90Cycle_h", "P90 cycle h", "{:.1f}"),
+        ("lineUtil", "line util", "{:.0%}"), ("lineQueueAvg", "line queue", "{:.2f}"), ("mergeQueueAvg", "Tadali queue", "{:.3f}"),
         ("sidingUtil", "siding occ", "{:.0%}"), ("tipplerUtil", "tippler util", "{:.0%}"),
         ("mergeWait_h", "DN merge wait h", "{:.2f}"), ("demurrageRsPerRake", "demurrage Rs/rake", "{:,.0f}"),
-        ("shareRelief", "crew relief share", "{:.1%}"), ("shareBpc", "BPC share", "{:.1%}"), ("stockMinDays", "stock min days", "{:.1f}")]
+        ("crewExpiriesPer100", "crew expiries /100 trips", "{:.2f}"), ("examHoursPerRakeMonth", "exam h/rake/month", "{:.1f}"),
+        ("shareBpc", "BPC share", "{:.1%}"), ("stockMinDays", "stock min days", "{:.1f}")]
 
 
 def run(args):
@@ -122,6 +142,8 @@ def main():
 KEYS_NON_PHASE = {"seed", "phase", "scenario", "fleet", "rakesPerDay", "meanCycle_h", "cycles", "lineUtil", "sidingUtil",
                   "tipplerUtil", "demurrageRsPerRake", "loadOverFreeShare", "unloadOverFreeShare", "shareRelief", "shareBpc",
                   "bpcOverdue", "stockMinDays", "daysBelow7", "mergeWait_h", "crewTrips", "extensions", "maxStuck_h",
+                  "p90Cycle_h", "tonnesPerDay", "mergeQueueAvg", "maxMergeQ", "lineQueueAvg", "crewExpiriesPer100",
+                  "examHoursPerRakeMonth",
                   "stuckPhase", "Ghugus_terminal", "Crew_waits", "Single-line_waits", "Running", "Tadali_DN_merge",
                   "CSTPS_terminal", "UP_path_at_CD", "Crew_relief", "BPC_detour"}
 

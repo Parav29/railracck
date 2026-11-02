@@ -22,7 +22,7 @@ public class Runner {
         if (header) {
             StringBuilder h = new StringBuilder("seed,phase,scenario,fleet,rakesPerDay,meanCycle_h,cycles,lineUtil,sidingUtil,tipplerUtil,"
                 + "demurrageRsPerRake,loadOverFreeShare,unloadOverFreeShare,shareRelief,shareBpc,bpcOverdue,stockMinDays,daysBelow7,"
-                + "mergeWait_h,crewTrips,extensions,maxStuck_h,stuckPhase");
+                + "mergeWait_h,crewTrips,extensions,p90Cycle_h,tonnesPerDay,mergeQueueAvg,maxMergeQ,lineQueueAvg,crewExpiriesPer100,examHoursPerRakeMonth,maxStuck_h,stuckPhase");
             for (String g : Main.GRP_NAME) h.append(",").append(g.replace(' ', '_'));
             for (String p : Main.PH_NAME) h.append(",\"").append(p).append("\"");
             System.out.println(h);
@@ -46,6 +46,8 @@ public class Runner {
                 m.unloadEnds == 0 ? 0 : (double) m.unloadOverFree / m.unloadEnds,
                 m.shareRelief(), m.shareBpc(), m.bpcOverdue, m.stockMinDays, m.daysBelow7,
                 m.mergeCount == 0 ? 0 : m.mergeWaitSum / m.mergeCount, m.crewTrips, m.extensions));
+            s.append(String.format(java.util.Locale.US, ",%.3f,%.0f,%.4f,%d,%.4f,%.3f,%.3f", m.p90Cycle(), m.rakesPerDay() * m.payload_t,
+                m.mergeQueueAvg(), m.maxMergeQ, m.lineQueueAvg(), m.crewExpiriesPer100(), m.examHoursPerRakeMonth()));
             double stuck = 0; String sp = "";
             for (Main.Rake r : m.rakes) { double d = m.time() - r.phaseStart; if (d > stuck) { stuck = d; sp = Main.PH_NAME[r.phase]; } }
             s.append(String.format(java.util.Locale.US, ",%.1f,%s", stuck, sp.replace(',', ' ')));

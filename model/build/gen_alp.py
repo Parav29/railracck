@@ -447,8 +447,8 @@ STOP_H = 24 * (3 + 30)
 
 EXP_CODE = r"""// Collected KPI rows, grouped by the value of the varied parameter shown in the summary.
 java.util.TreeMap<Integer, java.util.ArrayList<double[]>> byKey = new java.util.TreeMap<Integer, java.util.ArrayList<double[]>>();
-static final String[] KPI = { "rakes/day", "cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
-                              "relief share", "BPC share", "stock min days" };
+static final String[] KPI = { "rakes/day", "cycle h", "P90 cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
+                              "relief share", "BPC share", "stock min days", "merge queue", "expiries/100", "exam h/rake/mo" };
 
 double tCrit(int df) {
     final double[] t = { 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145,
@@ -457,8 +457,8 @@ double tCrit(int df) {
 }
 
 void collect(int key, Main m) {
-    double[] r = { m.rakesPerDay(), m.meanCycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
-                   m.shareRelief(), m.shareBpc(), m.stockMinDays };
+    double[] r = { m.rakesPerDay(), m.meanCycle(), m.p90Cycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
+                   m.shareRelief(), m.shareBpc(), m.stockMinDays, m.mergeQueueAvg(), m.crewExpiriesPer100(), m.examHoursPerRakeMonth() };
     if (!byKey.containsKey(key)) byKey.put(key, new java.util.ArrayList<double[]>());
     byKey.get(key).add(r);
 }
@@ -600,11 +600,11 @@ def build():
     experiments = simulation_experiment()
     experiments += param_variation("Replications30", "Baseline: 30 replications (seeds 1-30), mean and 95% CI",
                                    [("seed", 1, 30, 1)], "root.modelPhase", "phase", "RakeFlow_replications_summary.txt")
-    experiments += param_variation("E1_FleetSize", "E1 fleet size 4-14 rakes x 10 seeds (common random numbers)",
-                                   [("fleetSize", 4, 14, 2), ("seed", 1, 10, 1)], "root.fleetSize", "fleet",
+    experiments += param_variation("E1_FleetSize", "E1 fleet size 4-20 rakes x 10 seeds (common random numbers)",
+                                   [("fleetSize", 4, 20, 2), ("seed", 1, 10, 1)], "root.fleetSize", "fleet",
                                    "RakeFlow_E1_fleet_summary.txt")
-    experiments += param_variation("E2toE7_Scenarios", "Scenarios 0-11 (E2 RLS, E3 path policy, E4 lobby, E5 doubling, E6 tipplers, E7 +20%) x 10 seeds",
-                                   [("scenario", 0, 11, 1), ("seed", 1, 10, 1)], "root.scenario", "scenario",
+    experiments += param_variation("E2toE7_Scenarios", "Scenarios 0-18 (E2 RLS, E3 path policy, E4 lobby, E5 doubling, E6 tipplers, E7 +20%, dispatch, crew timing, exam trigger) x 10 seeds",
+                                   [("scenario", 0, 18, 1), ("seed", 1, 10, 1)], "root.scenario", "scenario",
                                    "RakeFlow_scenarios_summary.txt")
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!--

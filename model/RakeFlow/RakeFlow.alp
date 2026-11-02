@@ -6,7 +6,7 @@
 -->
 <AnyLogicWorkspace WorkspaceVersion="1.9" AnyLogicVersion="8.9.9.202607020844" AlpVersion="8.9.9">
 <Model>
-<Id>1791000000473</Id>
+<Id>1791000000486</Id>
 <Name><![CDATA[RakeFlow]]></Name>
 <EngineVersion>6</EngineVersion>
 <JavaPackageName><![CDATA[rakeflow]]></JavaPackageName>
@@ -73,6 +73,8 @@ class Rake {
     double bpcKm, bpcDue;
     boolean bpcThisCycle, reliefThisCycle;
     double crewHoursLoaded;
+    boolean crewPreOrdered, crewOnBoardEarly, readyDone;   // A-29 crew ordered during loading
+    double readyDur = -1;                                   // pre-drawn A-14 time when the crew is ordered during loading
     double[] stamp = new double[18];   // timestamps for the RAKE_cycle_log export
 }
 
@@ -129,6 +131,10 @@ int lastGeneratedDay = -2;
 int cFleet, cSidings, cGgsLoops, cTaeLoops, cTipplers, cCrewPool, cPolicy, cPhase;
 boolean cDoubled, cRls, cCrewOn, cBpcOn, cLocalLobby, cAllowExt, cAbsBlock;
 double cThroughPerDay;
+int cDispatch, cBatch;            // A-28 single-line dispatch rule: 0 loaded first, 1 alternating, 2 batched
+boolean cCrewAtLoad;              // A-29 crew ordered during loading so it arrives as the rake is ready
+double cBpcLook;                  // BPC exam trigger: days of validity left
+int lastDir = -1, batchN;         // last single-line move direction (0 loaded GGS->TAE, 1 empty TAE->GGS) and run length
 
 // ---- statistics (reset at the end of warm-up) ----
 double statsStart, lastTouch;
@@ -138,6 +144,8 @@ double tonnes, sumCycle, sumCycleSq, demurrageRs, demurrageLoadRs, demurrageUnlo
 double[] compSum = new double[NPH];
 double areaLineDN, areaLineUP, areaSidings, areaTipplers, areaGgsLoops, areaTaeLoops, areaCrewOnDuty;
 double mergeWaitSum; int mergeCount;
+double areaMergeQ, areaLineQ, areaBpc; int maxMergeQ;
+java.util.ArrayList<Double> cycleTimes = new java.util.ArrayList<Double>();
 double dutySum; int reliefCycles, bpcCycles;
 java.util.ArrayList<Double> deliveryTimes = new java.util.ArrayList<Double>();
 
@@ -284,7 +292,7 @@ initModel();]]></StartupCode>
 writeResults();]]></DestroyCode>
 <Generic>false</Generic>
 <GenericParameter>
-<Id>1791000000374</Id>
+<Id>1791000000380</Id>
 <Name><![CDATA[1791000000003]]></Name>
 <GenericParameterValue Class="CodeValue">
 <Code><![CDATA[T extends Agent]]></Code>
@@ -347,7 +355,7 @@ writeResults();]]></DestroyCode>
 </EnvironmentProperties>
 <DatasetsCreationProperties>
 <AutoCreate>true</AutoCreate>
-<Id>1791000000375</Id>
+<Id>1791000000381</Id>
 <OccurrenceAtTime>true</OccurrenceAtTime>
 <OccurrenceDate>1791138600000</OccurrenceDate>
 <OccurrenceTime Class="CodeUnitValue">
@@ -360,7 +368,7 @@ writeResults();]]></DestroyCode>
 </RecurrenceCode>
 </DatasetsCreationProperties>
 <ScaleRuler>
-<Id>1791000000376</Id>
+<Id>1791000000382</Id>
 <Name><![CDATA[scale]]></Name>
 <X>0</X><Y>-150</Y>
 <PublicFlag>false</PublicFlag>
@@ -376,7 +384,7 @@ writeResults();]]></DestroyCode>
 <InheritedFromParentAgentType>true</InheritedFromParentAgentType>
 </ScaleRuler>
 <CurrentLevel>1791000000002</CurrentLevel>
-<ConnectionsId>1791000000377</ConnectionsId>
+<ConnectionsId>1791000000383</ConnectionsId>
 <Variables>
 <Variable Class="Parameter">
 <Id>1791000000003</Id>
@@ -436,7 +444,7 @@ writeResults();]]></DestroyCode>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Description><![CDATA[0 = parameters as set; 1 RLS, 2 planned DN slot, 3 crew-critical priority, 4 Chandrapur lobby, 5 doubling, 6 tipplers 3, 7 tipplers 5, 8 loops +1, 9 crew +20%, 10 sidings +1, 11 no through goods]]></Description>
+<Description><![CDATA[0 = parameters as set; 1 RLS, 2 planned DN slot, 3 crew-critical priority, 4 Chandrapur lobby, 5 doubling, 6 tipplers 3, 7 tipplers 5, 8 loops +1, 9 crew +20%, 10 sidings +1, 11 no through goods, 12 alternating dispatch, 13 batched dispatch, 14 crew ordered at loading, 15/16/17 exam trigger 3/5/7 days left, 18 exam at expiry]]></Description>
 <Properties SaveInSnapshot="true" ModificatorType="STATIC">
 <Type><![CDATA[int]]></Type>
 <UnitType><![CDATA[NONE]]></UnitType>
@@ -536,7 +544,7 @@ writeResults();]]></DestroyCode>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Description><![CDATA[A-18 ASSUMPTION closed-circuit rakes on this circuit (decision variable, E1: 4-14)]]></Description>
+<Description><![CDATA[A-18 ASSUMPTION closed-circuit rakes on this circuit (decision variable, E1: 4-20)]]></Description>
 <Properties SaveInSnapshot="true" ModificatorType="STATIC">
 <Type><![CDATA[int]]></Type>
 <UnitType><![CDATA[NONE]]></UnitType>
@@ -1305,13 +1313,13 @@ writeResults();]]></DestroyCode>
 </Variable>
 <Variable Class="Parameter">
 <Id>1791000000077</Id>
-<Name><![CDATA[pathPolicy]]></Name>
+<Name><![CDATA[dispatchPolicy_A28]]></Name>
 <X>1600</X><Y>944</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Description><![CDATA[E3: 0 = FCFS, loaded first on the single line (A-22); 1 = plan the DN path first and order the crew to match; 2 = priority to crews with < 2 h left]]></Description>
+<Description><![CDATA[A-28 ASSUMPTION single-line dispatch when rakes wait at both ends: 0 = loaded first (A-22), 1 = alternate directions, 2 = batches of batchSize_A28 moves per direction]]></Description>
 <Properties SaveInSnapshot="true" ModificatorType="STATIC">
 <Type><![CDATA[int]]></Type>
 <UnitType><![CDATA[NONE]]></UnitType>
@@ -1330,8 +1338,58 @@ writeResults();]]></DestroyCode>
 </Variable>
 <Variable Class="Parameter">
 <Id>1791000000079</Id>
+<Name><![CDATA[batchSize_A28]]></Name>
+<X>1600</X><Y>966</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[A-28 moves in one direction before the other side gets the line (dispatch rule 2)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[int]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[3]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000080</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000081</Id>
+<Name><![CDATA[pathPolicy]]></Name>
+<X>1600</X><Y>988</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[E3: 0 = FCFS, loaded first on the single line (A-22); 1 = plan the DN path first and order the crew to match; 2 = priority to crews with < 2 h left]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[int]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[0]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000082</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000083</Id>
 <Name><![CDATA[mainKm_INF08]]></Name>
-<X>1600</X><Y>996</Y>
+<X>1600</X><Y>1040</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1345,7 +1403,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[13]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000080</Id>
+<Id>1791000000084</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1354,9 +1412,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000081</Id>
+<Id>1791000000085</Id>
 <Name><![CDATA[mainSpeedMin_A03]]></Name>
-<X>1600</X><Y>1018</Y>
+<X>1600</X><Y>1062</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1370,7 +1428,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[30]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000082</Id>
+<Id>1791000000086</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1379,9 +1437,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000083</Id>
+<Id>1791000000087</Id>
 <Name><![CDATA[mainSpeedMode_A03]]></Name>
-<X>1600</X><Y>1040</Y>
+<X>1600</X><Y>1084</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1395,7 +1453,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[40]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000084</Id>
+<Id>1791000000088</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1404,9 +1462,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000085</Id>
+<Id>1791000000089</Id>
 <Name><![CDATA[mainSpeedMax_A03]]></Name>
-<X>1600</X><Y>1062</Y>
+<X>1600</X><Y>1106</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1420,7 +1478,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[50]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000086</Id>
+<Id>1791000000090</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1429,9 +1487,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000087</Id>
+<Id>1791000000091</Id>
 <Name><![CDATA[tipplersInService_A17]]></Name>
-<X>1600</X><Y>1084</Y>
+<X>1600</X><Y>1128</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1445,7 +1503,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[4]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000088</Id>
+<Id>1791000000092</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1454,9 +1512,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000089</Id>
+<Id>1791000000093</Id>
 <Name><![CDATA[placeUnloadMin_A15]]></Name>
-<X>1600</X><Y>1106</Y>
+<X>1600</X><Y>1150</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1470,56 +1528,6 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[0.6]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000090</Id>
-<EditorContolType>TEXT_BOX</EditorContolType>
-<MinSliderValue><![CDATA[0]]></MinSliderValue>
-<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
-<DelimeterType>NO_DELIMETER</DelimeterType>
-</ParameterEditor>
-</Properties>
-</Variable>
-<Variable Class="Parameter">
-<Id>1791000000091</Id>
-<Name><![CDATA[placeUnloadMode_A15]]></Name>
-<X>1600</X><Y>1128</Y>
-<Label><X>10</X><Y>0</Y></Label>
-<PublicFlag>false</PublicFlag>
-<PresentationFlag>true</PresentationFlag>
-<ShowLabel>true</ShowLabel>
-<Description><![CDATA[A-15 mode (h)]]></Description>
-<Properties SaveInSnapshot="true" ModificatorType="STATIC">
-<Type><![CDATA[double]]></Type>
-<UnitType><![CDATA[NONE]]></UnitType>
-<SdArray>false</SdArray>
-<DefaultValue Class="CodeValue">
-<Code><![CDATA[2]]></Code>
-</DefaultValue>
-<ParameterEditor>
-<Id>1791000000092</Id>
-<EditorContolType>TEXT_BOX</EditorContolType>
-<MinSliderValue><![CDATA[0]]></MinSliderValue>
-<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
-<DelimeterType>NO_DELIMETER</DelimeterType>
-</ParameterEditor>
-</Properties>
-</Variable>
-<Variable Class="Parameter">
-<Id>1791000000093</Id>
-<Name><![CDATA[placeUnloadMax_A15]]></Name>
-<X>1600</X><Y>1150</Y>
-<Label><X>10</X><Y>0</Y></Label>
-<PublicFlag>false</PublicFlag>
-<PresentationFlag>true</PresentationFlag>
-<ShowLabel>true</ShowLabel>
-<Description><![CDATA[A-15 max (h)]]></Description>
-<Properties SaveInSnapshot="true" ModificatorType="STATIC">
-<Type><![CDATA[double]]></Type>
-<UnitType><![CDATA[NONE]]></UnitType>
-<SdArray>false</SdArray>
-<DefaultValue Class="CodeValue">
-<Code><![CDATA[8]]></Code>
-</DefaultValue>
-<ParameterEditor>
 <Id>1791000000094</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
@@ -1530,13 +1538,13 @@ writeResults();]]></DestroyCode>
 </Variable>
 <Variable Class="Parameter">
 <Id>1791000000095</Id>
-<Name><![CDATA[unloadMin_UL02]]></Name>
+<Name><![CDATA[placeUnloadMode_A15]]></Name>
 <X>1600</X><Y>1172</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Description><![CDATA[UL-02 SOFT unloading BOXN by rotary tippler, min (h)]]></Description>
+<Description><![CDATA[A-15 mode (h)]]></Description>
 <Properties SaveInSnapshot="true" ModificatorType="STATIC">
 <Type><![CDATA[double]]></Type>
 <UnitType><![CDATA[NONE]]></UnitType>
@@ -1555,8 +1563,58 @@ writeResults();]]></DestroyCode>
 </Variable>
 <Variable Class="Parameter">
 <Id>1791000000097</Id>
-<Name><![CDATA[unloadMode_UL02]]></Name>
+<Name><![CDATA[placeUnloadMax_A15]]></Name>
 <X>1600</X><Y>1194</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[A-15 max (h)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[double]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[8]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000098</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000099</Id>
+<Name><![CDATA[unloadMin_UL02]]></Name>
+<X>1600</X><Y>1216</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[UL-02 SOFT unloading BOXN by rotary tippler, min (h)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[double]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[2]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000100</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000101</Id>
+<Name><![CDATA[unloadMode_UL02]]></Name>
+<X>1600</X><Y>1238</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1570,7 +1628,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[4]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000098</Id>
+<Id>1791000000102</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1579,9 +1637,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000099</Id>
+<Id>1791000000103</Id>
 <Name><![CDATA[unloadMax_UL02]]></Name>
-<X>1600</X><Y>1216</Y>
+<X>1600</X><Y>1260</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1595,7 +1653,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[7]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000100</Id>
+<Id>1791000000104</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1604,9 +1662,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000101</Id>
+<Id>1791000000105</Id>
 <Name><![CDATA[releaseMin_A16]]></Name>
-<X>1600</X><Y>1238</Y>
+<X>1600</X><Y>1282</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1620,7 +1678,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[1.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000102</Id>
+<Id>1791000000106</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1629,9 +1687,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000103</Id>
+<Id>1791000000107</Id>
 <Name><![CDATA[releaseMode_A16]]></Name>
-<X>1600</X><Y>1260</Y>
+<X>1600</X><Y>1304</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1645,7 +1703,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[3]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000104</Id>
+<Id>1791000000108</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1654,9 +1712,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000105</Id>
+<Id>1791000000109</Id>
 <Name><![CDATA[releaseMax_A16]]></Name>
-<X>1600</X><Y>1282</Y>
+<X>1600</X><Y>1326</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1670,7 +1728,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[8]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000106</Id>
+<Id>1791000000110</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1679,9 +1737,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000107</Id>
+<Id>1791000000111</Id>
 <Name><![CDATA[freeTimeUnload_FT02]]></Name>
-<X>1600</X><Y>1304</Y>
+<X>1600</X><Y>1348</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1695,7 +1753,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[7]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000108</Id>
+<Id>1791000000112</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1704,7 +1762,7 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000109</Id>
+<Id>1791000000113</Id>
 <Name><![CDATA[crewPoolSize_A25]]></Name>
 <X>1930</X><Y>70</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -1720,7 +1778,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[16]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000110</Id>
+<Id>1791000000114</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1729,7 +1787,7 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000111</Id>
+<Id>1791000000115</Id>
 <Name><![CDATA[crewAtChandrapur_A06]]></Name>
 <X>1930</X><Y>92</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -1745,7 +1803,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[false]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000112</Id>
+<Id>1791000000116</Id>
 <EditorContolType>CHECK_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1754,9 +1812,34 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000113</Id>
-<Name><![CDATA[localLobbyTravel_A06]]></Name>
+<Id>1791000000117</Id>
+<Name><![CDATA[crewOrderedAtLoading_A29]]></Name>
 <X>1930</X><Y>114</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[A-29 ASSUMPTION false = crew ordered when the loaded rake is ready (today); true = ordered during loading so it arrives as the rake is ready (duty clock starts at sign-on either way)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[boolean]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[false]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000118</Id>
+<EditorContolType>CHECK_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000119</Id>
+<Name><![CDATA[localLobbyTravel_A06]]></Name>
+<X>1930</X><Y>136</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1770,7 +1853,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[0.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000114</Id>
+<Id>1791000000120</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1779,9 +1862,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000115</Id>
+<Id>1791000000121</Id>
 <Name><![CDATA[signOnMin_A08]]></Name>
-<X>1930</X><Y>136</Y>
+<X>1930</X><Y>158</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1795,7 +1878,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[0.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000116</Id>
+<Id>1791000000122</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1804,9 +1887,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000117</Id>
+<Id>1791000000123</Id>
 <Name><![CDATA[signOnMode_A08]]></Name>
-<X>1930</X><Y>158</Y>
+<X>1930</X><Y>180</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1820,7 +1903,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[0.75]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000118</Id>
+<Id>1791000000124</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1829,9 +1912,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000119</Id>
+<Id>1791000000125</Id>
 <Name><![CDATA[signOnMax_A08]]></Name>
-<X>1930</X><Y>180</Y>
+<X>1930</X><Y>202</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1845,7 +1928,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[2]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000120</Id>
+<Id>1791000000126</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1854,9 +1937,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000121</Id>
+<Id>1791000000127</Id>
 <Name><![CDATA[travelMin_A07]]></Name>
-<X>1930</X><Y>202</Y>
+<X>1930</X><Y>224</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1870,7 +1953,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[1]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000122</Id>
+<Id>1791000000128</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1879,9 +1962,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000123</Id>
+<Id>1791000000129</Id>
 <Name><![CDATA[travelMode_A07]]></Name>
-<X>1930</X><Y>224</Y>
+<X>1930</X><Y>246</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1895,7 +1978,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[1.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000124</Id>
+<Id>1791000000130</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1904,9 +1987,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000125</Id>
+<Id>1791000000131</Id>
 <Name><![CDATA[travelMax_A07]]></Name>
-<X>1930</X><Y>246</Y>
+<X>1930</X><Y>268</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1920,7 +2003,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[2.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000126</Id>
+<Id>1791000000132</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1929,9 +2012,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000127</Id>
+<Id>1791000000133</Id>
 <Name><![CDATA[travelCdMin_A26]]></Name>
-<X>1930</X><Y>268</Y>
+<X>1930</X><Y>290</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1945,7 +2028,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[0.3]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000128</Id>
+<Id>1791000000134</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1954,9 +2037,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000129</Id>
+<Id>1791000000135</Id>
 <Name><![CDATA[travelCdMode_A26]]></Name>
-<X>1930</X><Y>290</Y>
+<X>1930</X><Y>312</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1970,7 +2053,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[0.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000130</Id>
+<Id>1791000000136</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -1979,9 +2062,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000131</Id>
+<Id>1791000000137</Id>
 <Name><![CDATA[travelCdMax_A26]]></Name>
-<X>1930</X><Y>312</Y>
+<X>1930</X><Y>334</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -1995,7 +2078,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[1]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000132</Id>
+<Id>1791000000138</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2004,9 +2087,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000133</Id>
+<Id>1791000000139</Id>
 <Name><![CDATA[reliefMin_A09]]></Name>
-<X>1930</X><Y>334</Y>
+<X>1930</X><Y>356</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2020,7 +2103,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[1]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000134</Id>
+<Id>1791000000140</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2029,9 +2112,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000135</Id>
+<Id>1791000000141</Id>
 <Name><![CDATA[reliefMode_A09]]></Name>
-<X>1930</X><Y>356</Y>
+<X>1930</X><Y>378</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2045,7 +2128,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[2.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000136</Id>
+<Id>1791000000142</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2054,9 +2137,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000137</Id>
+<Id>1791000000143</Id>
 <Name><![CDATA[reliefMax_A09]]></Name>
-<X>1930</X><Y>378</Y>
+<X>1930</X><Y>400</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2070,7 +2153,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[6]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000138</Id>
+<Id>1791000000144</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2079,9 +2162,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000139</Id>
+<Id>1791000000145</Id>
 <Name><![CDATA[dutyLimit_CR01]]></Name>
-<X>1930</X><Y>400</Y>
+<X>1930</X><Y>422</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2095,7 +2178,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[9]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000140</Id>
+<Id>1791000000146</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2104,9 +2187,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000141</Id>
+<Id>1791000000147</Id>
 <Name><![CDATA[allowDutyExtension_CR02]]></Name>
-<X>1930</X><Y>422</Y>
+<X>1930</X><Y>444</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2120,7 +2203,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[true]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000142</Id>
+<Id>1791000000148</Id>
 <EditorContolType>CHECK_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2129,9 +2212,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000143</Id>
+<Id>1791000000149</Id>
 <Name><![CDATA[noticeHours_CR02]]></Name>
-<X>1930</X><Y>444</Y>
+<X>1930</X><Y>466</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2145,7 +2228,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[2]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000144</Id>
+<Id>1791000000150</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2154,9 +2237,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000145</Id>
+<Id>1791000000151</Id>
 <Name><![CDATA[extendedLimit_CR02]]></Name>
-<X>1930</X><Y>466</Y>
+<X>1930</X><Y>488</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2170,7 +2253,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[11]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000146</Id>
+<Id>1791000000152</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2179,9 +2262,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000147</Id>
+<Id>1791000000153</Id>
 <Name><![CDATA[hqRestShort_CR04]]></Name>
-<X>1930</X><Y>488</Y>
+<X>1930</X><Y>510</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2195,7 +2278,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[12]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000148</Id>
+<Id>1791000000154</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2204,9 +2287,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000149</Id>
+<Id>1791000000155</Id>
 <Name><![CDATA[hqRestLong_CR04]]></Name>
-<X>1930</X><Y>510</Y>
+<X>1930</X><Y>532</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2220,7 +2303,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[16]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000150</Id>
+<Id>1791000000156</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2229,9 +2312,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000151</Id>
+<Id>1791000000157</Id>
 <Name><![CDATA[bpcKm_BPC01]]></Name>
-<X>1930</X><Y>562</Y>
+<X>1930</X><Y>584</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2245,7 +2328,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[6000]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000152</Id>
+<Id>1791000000158</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2254,9 +2337,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000153</Id>
+<Id>1791000000159</Id>
 <Name><![CDATA[bpcDays_BPC01]]></Name>
-<X>1930</X><Y>584</Y>
+<X>1930</X><Y>606</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2270,7 +2353,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[30]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000154</Id>
+<Id>1791000000160</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2279,9 +2362,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000155</Id>
+<Id>1791000000161</Id>
 <Name><![CDATA[bpcGraceDays]]></Name>
-<X>1930</X><Y>606</Y>
+<X>1930</X><Y>628</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2295,7 +2378,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000156</Id>
+<Id>1791000000162</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2304,14 +2387,14 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000157</Id>
+<Id>1791000000163</Id>
 <Name><![CDATA[bpcLookaheadDays]]></Name>
-<X>1930</X><Y>628</Y>
+<X>1930</X><Y>650</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Description><![CDATA[ASSUMPTION send the rake for exam when validity has < this many days left]]></Description>
+<Description><![CDATA[ASSUMPTION send the rake for exam when validity has < this many days left (exam-trigger experiment: 0 = at expiry, 3, 5, 7)]]></Description>
 <Properties SaveInSnapshot="true" ModificatorType="STATIC">
 <Type><![CDATA[double]]></Type>
 <UnitType><![CDATA[NONE]]></UnitType>
@@ -2320,7 +2403,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[1]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000158</Id>
+<Id>1791000000164</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2329,9 +2412,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000159</Id>
+<Id>1791000000165</Id>
 <Name><![CDATA[depotKm_A10]]></Name>
-<X>1930</X><Y>650</Y>
+<X>1930</X><Y>672</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2345,7 +2428,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[14]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000160</Id>
+<Id>1791000000166</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2354,9 +2437,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000161</Id>
+<Id>1791000000167</Id>
 <Name><![CDATA[depotPathWait_A10]]></Name>
-<X>1930</X><Y>672</Y>
+<X>1930</X><Y>694</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2370,7 +2453,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[0.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000162</Id>
+<Id>1791000000168</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2379,9 +2462,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000163</Id>
+<Id>1791000000169</Id>
 <Name><![CDATA[examWaitMin_A11]]></Name>
-<X>1930</X><Y>694</Y>
+<X>1930</X><Y>716</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2395,7 +2478,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[0.5]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000164</Id>
+<Id>1791000000170</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2404,9 +2487,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000165</Id>
+<Id>1791000000171</Id>
 <Name><![CDATA[examWaitMode_A11]]></Name>
-<X>1930</X><Y>716</Y>
+<X>1930</X><Y>738</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2420,7 +2503,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[2]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000166</Id>
+<Id>1791000000172</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2429,9 +2512,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000167</Id>
+<Id>1791000000173</Id>
 <Name><![CDATA[examWaitMax_A11]]></Name>
-<X>1930</X><Y>738</Y>
+<X>1930</X><Y>760</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2445,81 +2528,6 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[10]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000168</Id>
-<EditorContolType>TEXT_BOX</EditorContolType>
-<MinSliderValue><![CDATA[0]]></MinSliderValue>
-<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
-<DelimeterType>NO_DELIMETER</DelimeterType>
-</ParameterEditor>
-</Properties>
-</Variable>
-<Variable Class="Parameter">
-<Id>1791000000169</Id>
-<Name><![CDATA[examMin_A12]]></Name>
-<X>1930</X><Y>760</Y>
-<Label><X>10</X><Y>0</Y></Label>
-<PublicFlag>false</PublicFlag>
-<PresentationFlag>true</PresentationFlag>
-<ShowLabel>true</ShowLabel>
-<Description><![CDATA[A-12 ASSUMPTION intensive exam duration, min (h); BPC-02 8 h]]></Description>
-<Properties SaveInSnapshot="true" ModificatorType="STATIC">
-<Type><![CDATA[double]]></Type>
-<UnitType><![CDATA[NONE]]></UnitType>
-<SdArray>false</SdArray>
-<DefaultValue Class="CodeValue">
-<Code><![CDATA[6]]></Code>
-</DefaultValue>
-<ParameterEditor>
-<Id>1791000000170</Id>
-<EditorContolType>TEXT_BOX</EditorContolType>
-<MinSliderValue><![CDATA[0]]></MinSliderValue>
-<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
-<DelimeterType>NO_DELIMETER</DelimeterType>
-</ParameterEditor>
-</Properties>
-</Variable>
-<Variable Class="Parameter">
-<Id>1791000000171</Id>
-<Name><![CDATA[examMode_A12]]></Name>
-<X>1930</X><Y>782</Y>
-<Label><X>10</X><Y>0</Y></Label>
-<PublicFlag>false</PublicFlag>
-<PresentationFlag>true</PresentationFlag>
-<ShowLabel>true</ShowLabel>
-<Description><![CDATA[A-12 mode (h)]]></Description>
-<Properties SaveInSnapshot="true" ModificatorType="STATIC">
-<Type><![CDATA[double]]></Type>
-<UnitType><![CDATA[NONE]]></UnitType>
-<SdArray>false</SdArray>
-<DefaultValue Class="CodeValue">
-<Code><![CDATA[8]]></Code>
-</DefaultValue>
-<ParameterEditor>
-<Id>1791000000172</Id>
-<EditorContolType>TEXT_BOX</EditorContolType>
-<MinSliderValue><![CDATA[0]]></MinSliderValue>
-<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
-<DelimeterType>NO_DELIMETER</DelimeterType>
-</ParameterEditor>
-</Properties>
-</Variable>
-<Variable Class="Parameter">
-<Id>1791000000173</Id>
-<Name><![CDATA[examMax_A12]]></Name>
-<X>1930</X><Y>804</Y>
-<Label><X>10</X><Y>0</Y></Label>
-<PublicFlag>false</PublicFlag>
-<PresentationFlag>true</PresentationFlag>
-<ShowLabel>true</ShowLabel>
-<Description><![CDATA[A-12 max (h)]]></Description>
-<Properties SaveInSnapshot="true" ModificatorType="STATIC">
-<Type><![CDATA[double]]></Type>
-<UnitType><![CDATA[NONE]]></UnitType>
-<SdArray>false</SdArray>
-<DefaultValue Class="CodeValue">
-<Code><![CDATA[12]]></Code>
-</DefaultValue>
-<ParameterEditor>
 <Id>1791000000174</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
@@ -2530,13 +2538,13 @@ writeResults();]]></DestroyCode>
 </Variable>
 <Variable Class="Parameter">
 <Id>1791000000175</Id>
-<Name><![CDATA[examOpenHour]]></Name>
-<X>1930</X><Y>826</Y>
+<Name><![CDATA[examMin_A12]]></Name>
+<X>1930</X><Y>782</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Description><![CDATA[BPC-03 HARD exam in daylight only: opens (hour of day)]]></Description>
+<Description><![CDATA[A-12 ASSUMPTION intensive exam duration, min (h); BPC-02 8 h]]></Description>
 <Properties SaveInSnapshot="true" ModificatorType="STATIC">
 <Type><![CDATA[double]]></Type>
 <UnitType><![CDATA[NONE]]></UnitType>
@@ -2555,8 +2563,83 @@ writeResults();]]></DestroyCode>
 </Variable>
 <Variable Class="Parameter">
 <Id>1791000000177</Id>
-<Name><![CDATA[examCloseHour]]></Name>
+<Name><![CDATA[examMode_A12]]></Name>
+<X>1930</X><Y>804</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[A-12 mode (h)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[double]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[8]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000178</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000179</Id>
+<Name><![CDATA[examMax_A12]]></Name>
+<X>1930</X><Y>826</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[A-12 max (h)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[double]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[12]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000180</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000181</Id>
+<Name><![CDATA[examOpenHour]]></Name>
 <X>1930</X><Y>848</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[BPC-03 HARD exam in daylight only: opens (hour of day)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[double]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[6]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000182</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000183</Id>
+<Name><![CDATA[examCloseHour]]></Name>
+<X>1930</X><Y>870</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2570,7 +2653,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[18]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000178</Id>
+<Id>1791000000184</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2579,9 +2662,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000179</Id>
+<Id>1791000000185</Id>
 <Name><![CDATA[wagonsPerRake]]></Name>
-<X>1930</X><Y>900</Y>
+<X>1930</X><Y>922</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2595,7 +2678,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[58]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000180</Id>
+<Id>1791000000186</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2604,9 +2687,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000181</Id>
+<Id>1791000000187</Id>
 <Name><![CDATA[payload_t]]></Name>
-<X>1930</X><Y>922</Y>
+<X>1930</X><Y>944</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2620,7 +2703,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[3990]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000182</Id>
+<Id>1791000000188</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2629,9 +2712,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000183</Id>
+<Id>1791000000189</Id>
 <Name><![CDATA[demurrageRate_DM01]]></Name>
-<X>1930</X><Y>944</Y>
+<X>1930</X><Y>966</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2645,7 +2728,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[150]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000184</Id>
+<Id>1791000000190</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2654,9 +2737,9 @@ writeResults();]]></DestroyCode>
 </Properties>
 </Variable>
 <Variable Class="Parameter">
-<Id>1791000000185</Id>
+<Id>1791000000191</Id>
 <Name><![CDATA[initialStock_kt]]></Name>
-<X>1930</X><Y>966</Y>
+<X>1930</X><Y>988</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2670,81 +2753,6 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[500]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000186</Id>
-<EditorContolType>TEXT_BOX</EditorContolType>
-<MinSliderValue><![CDATA[0]]></MinSliderValue>
-<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
-<DelimeterType>NO_DELIMETER</DelimeterType>
-</ParameterEditor>
-</Properties>
-</Variable>
-<Variable Class="Parameter">
-<Id>1791000000187</Id>
-<Name><![CDATA[normativeDaily_kt]]></Name>
-<X>1930</X><Y>988</Y>
-<Label><X>10</X><Y>0</Y></Label>
-<PublicFlag>false</PublicFlag>
-<PresentationFlag>true</PresentationFlag>
-<ShowLabel>true</ShowLabel>
-<Description><![CDATA[CSTPS normative daily requirement at 85% PLF (kt/day)]]></Description>
-<Properties SaveInSnapshot="true" ModificatorType="STATIC">
-<Type><![CDATA[double]]></Type>
-<UnitType><![CDATA[NONE]]></UnitType>
-<SdArray>false</SdArray>
-<DefaultValue Class="CodeValue">
-<Code><![CDATA[47.8]]></Code>
-</DefaultValue>
-<ParameterEditor>
-<Id>1791000000188</Id>
-<EditorContolType>TEXT_BOX</EditorContolType>
-<MinSliderValue><![CDATA[0]]></MinSliderValue>
-<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
-<DelimeterType>NO_DELIMETER</DelimeterType>
-</ParameterEditor>
-</Properties>
-</Variable>
-<Variable Class="Parameter">
-<Id>1791000000189</Id>
-<Name><![CDATA[consumptionMin_kt]]></Name>
-<X>1930</X><Y>1010</Y>
-<Label><X>10</X><Y>0</Y></Label>
-<PublicFlag>false</PublicFlag>
-<PresentationFlag>true</PresentationFlag>
-<ShowLabel>true</ShowLabel>
-<Description><![CDATA[CSTPS actual consumption, min (kt/day), CEA reports]]></Description>
-<Properties SaveInSnapshot="true" ModificatorType="STATIC">
-<Type><![CDATA[double]]></Type>
-<UnitType><![CDATA[NONE]]></UnitType>
-<SdArray>false</SdArray>
-<DefaultValue Class="CodeValue">
-<Code><![CDATA[18.7]]></Code>
-</DefaultValue>
-<ParameterEditor>
-<Id>1791000000190</Id>
-<EditorContolType>TEXT_BOX</EditorContolType>
-<MinSliderValue><![CDATA[0]]></MinSliderValue>
-<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
-<DelimeterType>NO_DELIMETER</DelimeterType>
-</ParameterEditor>
-</Properties>
-</Variable>
-<Variable Class="Parameter">
-<Id>1791000000191</Id>
-<Name><![CDATA[consumptionMode_kt]]></Name>
-<X>1930</X><Y>1032</Y>
-<Label><X>10</X><Y>0</Y></Label>
-<PublicFlag>false</PublicFlag>
-<PresentationFlag>true</PresentationFlag>
-<ShowLabel>true</ShowLabel>
-<Description><![CDATA[CSTPS consumption median (kt/day)]]></Description>
-<Properties SaveInSnapshot="true" ModificatorType="STATIC">
-<Type><![CDATA[double]]></Type>
-<UnitType><![CDATA[NONE]]></UnitType>
-<SdArray>false</SdArray>
-<DefaultValue Class="CodeValue">
-<Code><![CDATA[33]]></Code>
-</DefaultValue>
-<ParameterEditor>
 <Id>1791000000192</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
@@ -2755,13 +2763,13 @@ writeResults();]]></DestroyCode>
 </Variable>
 <Variable Class="Parameter">
 <Id>1791000000193</Id>
-<Name><![CDATA[consumptionMax_kt]]></Name>
-<X>1930</X><Y>1054</Y>
+<Name><![CDATA[normativeDaily_kt]]></Name>
+<X>1930</X><Y>1010</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Description><![CDATA[CSTPS consumption max (kt/day)]]></Description>
+<Description><![CDATA[CSTPS normative daily requirement at 85% PLF (kt/day)]]></Description>
 <Properties SaveInSnapshot="true" ModificatorType="STATIC">
 <Type><![CDATA[double]]></Type>
 <UnitType><![CDATA[NONE]]></UnitType>
@@ -2780,8 +2788,83 @@ writeResults();]]></DestroyCode>
 </Variable>
 <Variable Class="Parameter">
 <Id>1791000000195</Id>
-<Name><![CDATA[nonRailSupply_kt]]></Name>
+<Name><![CDATA[consumptionMin_kt]]></Name>
+<X>1930</X><Y>1032</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[CSTPS actual consumption, min (kt/day), CEA reports]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[double]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[18.7]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000196</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000197</Id>
+<Name><![CDATA[consumptionMode_kt]]></Name>
+<X>1930</X><Y>1054</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[CSTPS consumption median (kt/day)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[double]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[33]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000198</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000199</Id>
+<Name><![CDATA[consumptionMax_kt]]></Name>
 <X>1930</X><Y>1076</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Description><![CDATA[CSTPS consumption max (kt/day)]]></Description>
+<Properties SaveInSnapshot="true" ModificatorType="STATIC">
+<Type><![CDATA[double]]></Type>
+<UnitType><![CDATA[NONE]]></UnitType>
+<SdArray>false</SdArray>
+<DefaultValue Class="CodeValue">
+<Code><![CDATA[47.8]]></Code>
+</DefaultValue>
+<ParameterEditor>
+<Id>1791000000200</Id>
+<EditorContolType>TEXT_BOX</EditorContolType>
+<MinSliderValue><![CDATA[0]]></MinSliderValue>
+<MaxSliderValue><![CDATA[100]]></MaxSliderValue>
+<DelimeterType>NO_DELIMETER</DelimeterType>
+</ParameterEditor>
+</Properties>
+</Variable>
+<Variable Class="Parameter">
+<Id>1791000000201</Id>
+<Name><![CDATA[nonRailSupply_kt]]></Name>
+<X>1930</X><Y>1098</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -2795,7 +2878,7 @@ writeResults();]]></DestroyCode>
 <Code><![CDATA[7]]></Code>
 </DefaultValue>
 <ParameterEditor>
-<Id>1791000000196</Id>
+<Id>1791000000202</Id>
 <EditorContolType>TEXT_BOX</EditorContolType>
 <MinSliderValue><![CDATA[0]]></MinSliderValue>
 <MaxSliderValue><![CDATA[100]]></MaxSliderValue>
@@ -2808,7 +2891,7 @@ writeResults();]]></DestroyCode>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000378</Id>
+<Id>1791000000384</Id>
 <Name><![CDATA[schedAt]]></Name>
 <Description><![CDATA[Kernel: put a job on the future-event list at absolute model time t (hours).]]></Description>
 <X>2400</X><Y>60</Y>
@@ -2834,7 +2917,7 @@ if (!inRun) armClock();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000379</Id>
+<Id>1791000000385</Id>
 <Name><![CDATA[schedAfter]]></Name>
 <Description><![CDATA[Kernel: run a job dt hours from now.]]></Description>
 <X>2400</X><Y>86</Y>
@@ -2855,7 +2938,7 @@ if (!inRun) armClock();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000380</Id>
+<Id>1791000000386</Id>
 <Name><![CDATA[armClock]]></Name>
 <Description><![CDATA[Kernel: make sure exactly one AnyLogic DynamicEvent is armed at the earliest kernel event.]]></Description>
 <X>2400</X><Y>112</Y>
@@ -2880,7 +2963,7 @@ wake = new DynamicEvent(this, Math.max(0, e.t - time()), TimeUnits.HOUR) {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000381</Id>
+<Id>1791000000387</Id>
 <Name><![CDATA[runDue]]></Name>
 <Description><![CDATA[Kernel: execute every kernel job that is due now (ties in scheduling order), then re-arm the clock.]]></Description>
 <X>2400</X><Y>138</Y>
@@ -2900,7 +2983,7 @@ armClock();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000382</Id>
+<Id>1791000000388</Id>
 <Name><![CDATA[rUnif]]></Name>
 <Description><![CDATA[Uniform(a,b) from the model's own stream (seeded by parameter seed).]]></Description>
 <X>2400</X><Y>164</Y>
@@ -2921,7 +3004,7 @@ armClock();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000383</Id>
+<Id>1791000000389</Id>
 <Name><![CDATA[rTri]]></Name>
 <Description><![CDATA[Triangular(min, mode, max) by inverse CDF. NOTE argument order is min, MODE, max as in the brief.]]></Description>
 <X>2400</X><Y>190</Y>
@@ -2950,7 +3033,7 @@ return max - Math.sqrt((1 - u) * (max - min) * (max - mode));]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000384</Id>
+<Id>1791000000390</Id>
 <Name><![CDATA[rLogn]]></Name>
 <Description><![CDATA[Lognormal with the given mean and standard deviation (A-21 passenger lateness).]]></Description>
 <X>2400</X><Y>216</Y>
@@ -2974,7 +3057,7 @@ return Math.exp(mu + Math.sqrt(s2) * rng.nextGaussian());]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[int]]></ReturnType>
-<Id>1791000000385</Id>
+<Id>1791000000391</Id>
 <Name><![CDATA[rPois]]></Name>
 <Description><![CDATA[Poisson count (through goods trains per day, A-24).]]></Description>
 <X>2400</X><Y>242</Y>
@@ -2995,7 +3078,7 @@ return k - 1;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000386</Id>
+<Id>1791000000392</Id>
 <Name><![CDATA[setPhase]]></Name>
 <Description><![CDATA[Close the current cycle-time component of rake r and open component p (endExpected used by the animation).]]></Description>
 <X>2400</X><Y>268</Y>
@@ -3024,7 +3107,7 @@ r.phaseEnd = endExpected;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000387</Id>
+<Id>1791000000393</Id>
 <Name><![CDATA[initModel]]></Name>
 <Description><![CDATA[Start-up: read parameters (and scenario overrides), build timetable blockers, create rakes and crews.]]></Description>
 <X>2400</X><Y>294</Y>
@@ -3037,6 +3120,8 @@ cFleet = fleetSize; cSidings = loadingSidings; cGgsLoops = ghugusLoops_A01; cTae
 cTipplers = tipplersInService_A17; cCrewPool = crewPoolSize_A25; cPolicy = pathPolicy; cPhase = modelPhase;
 cDoubled = lineDoubled_INF04; cRls = loadingByRLS_LD04; cLocalLobby = crewAtChandrapur_A06;
 cAllowExt = allowDutyExtension_CR02; cAbsBlock = absoluteBlockTAE_CD_A23; cThroughPerDay = throughGoodsPerDay_A24;
+cDispatch = dispatchPolicy_A28; cBatch = Math.max(1, batchSize_A28); cCrewAtLoad = crewOrderedAtLoading_A29;
+cBpcLook = bpcLookaheadDays;
 applyScenario(scenario);
 cCrewOn = cPhase >= 2;
 cBpcOn = cPhase >= 3;
@@ -3070,7 +3155,7 @@ schedAt((warmupDays + runDays) * 24.0 - 1e-6, () -> writeResults());]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000388</Id>
+<Id>1791000000394</Id>
 <Name><![CDATA[applyScenario]]></Name>
 <Description><![CDATA[Experiment presets E2-E7 (scenario 0 = use the parameter values as set).]]></Description>
 <X>2400</X><Y>320</Y>
@@ -3094,13 +3179,20 @@ schedAt((warmupDays + runDays) * 24.0 - 1e-6, () -> writeResults());]]></Body>
     case 9: cCrewPool = (int) Math.ceil(cCrewPool * 1.2); break;   // E7 crew +20%
     case 10: cSidings += 1; break;                       // E7 loading sidings +1
     case 11: cThroughPerDay = 0; break;                  // sensitivity: no through goods on main line
+    case 12: cDispatch = 1; break;                       // dispatch: alternate directions on the single line
+    case 13: cDispatch = 2; break;                       // dispatch: batches of batchSize_A28 moves per direction
+    case 14: cCrewAtLoad = true; break;                  // crew ordered during loading (A-29)
+    case 15: cBpcLook = 3; break;                        // exam trigger: 3 days of validity left
+    case 16: cBpcLook = 5; break;                        // exam trigger: 5 days left
+    case 17: cBpcLook = 7; break;                        // exam trigger: 7 days left
+    case 18: cBpcLook = 0; break;                        // exam trigger: at expiry
     default: break;
 }]]></Body>
 </Function>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000389</Id>
+<Id>1791000000395</Id>
 <Name><![CDATA[genDay]]></Name>
 <Description><![CDATA[Build the blockers for day d: scheduled passenger trains on their days of run + lognormal lateness (A-21) + through goods trains (A-24).]]></Description>
 <X>2400</X><Y>346</Y>
@@ -3130,7 +3222,7 @@ for (int k = 0; k < 2; k++) {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000390</Id>
+<Id>1791000000396</Id>
 <Name><![CDATA[insertBlocker]]></Name>
 <Description><![CDATA[Insert keeping the list sorted by passing time.]]></Description>
 <X>2400</X><Y>372</Y>
@@ -3153,7 +3245,7 @@ list.add(lo, b);]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000391</Id>
+<Id>1791000000397</Id>
 <Name><![CDATA[nextGap]]></Name>
 <Description><![CDATA[Earliest t >= t0 with no train passing in (t - gLead, t + gTrail). gTrail adds the catch-up margin for a following passenger train when A-23 absolute block is on.]]></Description>
 <X>2400</X><Y>398</Y>
@@ -3193,7 +3285,7 @@ return t;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000392</Id>
+<Id>1791000000398</Id>
 <Name><![CDATA[dailyTick]]></Name>
 <Description><![CDATA[00:00 every day: extend the timetable two days ahead, drop old blockers, update CSTPS coal stock.]]></Description>
 <X>2400</X><Y>424</Y>
@@ -3220,7 +3312,7 @@ if (time() >= statsStart && time() >= warmupDays * 24.0) {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000393</Id>
+<Id>1791000000399</Id>
 <Name><![CDATA[dispatch]]></Name>
 <Description><![CDATA[The section controller: keep allocating sidings, crews, the single line, CD departures, tipplers and the exam line until nothing more can move.]]></Description>
 <X>2400</X><Y>450</Y>
@@ -3249,7 +3341,7 @@ inDispatch = false;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000394</Id>
+<Id>1791000000400</Id>
 <Name><![CDATA[arriveGGS]]></Name>
 <Description><![CDATA[Empty rake arrives at Ghugus (it already holds a GGS loop). Closes the previous cycle and starts a new one.]]></Description>
 <X>2400</X><Y>476</Y>
@@ -3269,6 +3361,7 @@ java.util.Arrays.fill(r.stamp, -1);
 r.stamp[S_ARR_GGS] = time();
 r.bpcThisCycle = false;
 r.reliefThisCycle = false;
+r.crewPreOrdered = false; r.crewOnBoardEarly = false; r.readyDone = false; r.readyDur = -1;
 r.loaded = false;
 r.loc = L_GGS;
 setPhase(r, P_PLACE_GGS, -1);
@@ -3281,7 +3374,7 @@ schedAfter(rTri(placeLoadMin_A13, placeLoadMode_A13, placeLoadMax_A13), () -> {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[boolean]]></ReturnType>
-<Id>1791000000395</Id>
+<Id>1791000000401</Id>
 <Name><![CDATA[startLoading]]></Name>
 <Description><![CDATA[Place the first waiting empty on a free loading siding (CHP) and start loading.]]></Description>
 <X>2400</X><Y>502</Y>
@@ -3305,12 +3398,18 @@ double lt = cRls ? rTri(loadRlsMin_LD04, loadRlsMode_LD04, loadRlsMax_LD04)
                  : rTri(loadMin_LD03, loadMode_LD03, loadMax_LD03);
 setPhase(r, P_LOAD, time() + lt);
 schedAfter(lt, () -> loadDone(r));
+if (cCrewAtLoad && cCrewOn && cPolicy != 1) {
+    // A-29: draw the release->ready time now and order the crew so it should arrive just as the rake is ready
+    r.readyDur = rTri(readyMin_A14, readyMode_A14, readyMax_A14);
+    double orderAt = time() + lt + r.readyDur - expectedCrewLead(true);
+    schedAt(Math.max(time(), orderAt), () -> preOrderCrew(r));
+}
 return true;]]></Body>
 </Function>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000396</Id>
+<Id>1791000000402</Id>
 <Name><![CDATA[loadDone]]></Name>
 <Description><![CDATA[Loading finished = release. Demurrage on placement->release over FT-01. Rake is drawn out to a GGS loop if one is free, else it is prepared on the siding (blocking it).]]></Description>
 <X>2400</X><Y>528</Y>
@@ -3328,13 +3427,14 @@ r.stamp[S_RELEASED] = time();
 chargeDemurrage(time() - r.placedAt, freeTimeLoad_FT01, true);
 if (ggsLoopUsed < cGgsLoops) { ggsLoopUsed++; r.holdsGgsLoop = true; releaseSiding(r); }
 setPhase(r, P_READY_GGS, -1);
-schedAfter(rTri(readyMin_A14, readyMode_A14, readyMax_A14), () -> readyGGS(r));
+double rd = r.readyDur >= 0 ? r.readyDur : rTri(readyMin_A14, readyMode_A14, readyMax_A14);
+schedAfter(rd, () -> readyGGS(r));
 dispatch();]]></Body>
 </Function>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000397</Id>
+<Id>1791000000403</Id>
 <Name><![CDATA[releaseSiding]]></Name>
 <Description><![CDATA[Free the loading siding held by rake r.]]></Description>
 <X>2400</X><Y>554</Y>
@@ -3353,7 +3453,7 @@ r.onSiding = false;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[boolean]]></ReturnType>
-<Id>1791000000398</Id>
+<Id>1791000000404</Id>
 <Name><![CDATA[drawOutBlocked]]></Name>
 <Description><![CDATA[A loaded rake still standing on a siding is drawn out to a GGS loop as soon as one frees, so the siding can take the next empty.]]></Description>
 <X>2400</X><Y>580</Y>
@@ -3375,7 +3475,7 @@ return false;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000399</Id>
+<Id>1791000000405</Id>
 <Name><![CDATA[readyGGS]]></Name>
 <Description><![CDATA[Loaded rake ready to leave Ghugus (A-14 done): ask for a crew. Policy 1 first plans the DN path at Tadali and orders the crew to match it.]]></Description>
 <X>2400</X><Y>606</Y>
@@ -3388,6 +3488,13 @@ return false;]]></Body>
 <Type><![CDATA[Rake]]></Type>
 </Parameter>
 <Body><![CDATA[r.stamp[S_LOCO] = time();
+r.readyDone = true;
+if (r.crewPreOrdered) {
+    // A-29: crew was ordered during loading; go if it is already on the train, else wait for it
+    if (r.crewOnBoardEarly) { setPhase(r, P_WAIT_PATH_GGS, -1); qDepartGGS.add(r); dispatch(); }
+    else setPhase(r, P_WAIT_CREW_L, -1);
+    return;
+}
 if (cPolicy == 1 && cCrewOn) {
     double lead = expectedCrewLead(true);
     double spur = spurOccMode_A04 / 60.0;
@@ -3403,7 +3510,7 @@ if (cPolicy == 1 && cCrewOn) {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000400</Id>
+<Id>1791000000406</Id>
 <Name><![CDATA[expectedCrewLead]]></Name>
 <Description><![CDATA[Mean sign-on + travel time of a crew from the booking lobby to the train.]]></Description>
 <X>2400</X><Y>632</Y>
@@ -3422,7 +3529,7 @@ return signOn + (cLocalLobby ? 0.25 : (travelCdMin_A26 + travelCdMode_A26 + trav
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000401</Id>
+<Id>1791000000407</Id>
 <Name><![CDATA[requestCrew]]></Name>
 <Description><![CDATA[Queue rake r for a crew from the lobby pool (phase 1: crew always available, no clock).]]></Description>
 <X>2400</X><Y>658</Y>
@@ -3442,7 +3549,7 @@ dispatch();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[boolean]]></ReturnType>
-<Id>1791000000402</Id>
+<Id>1791000000408</Id>
 <Name><![CDATA[assignCrew]]></Name>
 <Description><![CDATA[Give the next waiting rake a free crew. Duty clock starts at sign-on in the lobby (CR-01..CR-05).]]></Description>
 <X>2400</X><Y>684</Y>
@@ -3484,7 +3591,7 @@ return true;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000403</Id>
+<Id>1791000000409</Id>
 <Name><![CDATA[crewReady]]></Name>
 <Description><![CDATA[Crew is on the train: resume according to where the rake stands.]]></Description>
 <X>2400</X><Y>710</Y>
@@ -3497,6 +3604,7 @@ return true;]]></Body>
 <Type><![CDATA[Rake]]></Type>
 </Parameter>
 <Body><![CDATA[r.needRelief = false;
+if (r.loc == L_GGS && r.crewPreOrdered && !r.readyDone) { r.crewOnBoardEarly = true; return; }   // A-29: crew waits on the train, duty clock running
 if (r.loc == L_GGS) { setPhase(r, P_WAIT_PATH_GGS, -1); qDepartGGS.add(r); }
 else if (r.loc == L_TAE && r.loaded) { planMerge(r); }
 else if (r.loc == L_TAE) { setPhase(r, P_WAIT_LINE_TAE, -1); qLineTAE.add(r); }
@@ -3506,7 +3614,7 @@ dispatch();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000404</Id>
+<Id>1791000000410</Id>
 <Name><![CDATA[dutyLimitFor]]></Name>
 <Description><![CDATA[Latest time crew c may still be working: 9 h, or 11 h if notice was / can still be given 2 h before expiry.]]></Description>
 <X>2400</X><Y>736</Y>
@@ -3526,7 +3634,7 @@ return c.signOn + dutyLimit_CR01;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000405</Id>
+<Id>1791000000411</Id>
 <Name><![CDATA[expiryCheck]]></Name>
 <Description><![CDATA[Duty limit reached while the train is standing: stable it and ask for relief (A-09).]]></Description>
 <X>2400</X><Y>762</Y>
@@ -3550,7 +3658,7 @@ if (time() + 1e-9 >= dutyLimitFor(c)) relieve(r);]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000406</Id>
+<Id>1791000000412</Id>
 <Name><![CDATA[relieve]]></Name>
 <Description><![CDATA[Crew signs off where the train stands; cancel its planned path; request a relief crew (A-09).]]></Description>
 <X>2660</X><Y>60</Y>
@@ -3569,6 +3677,13 @@ r.crew = null;
 r.token++;
 reliefEvents++;
 r.reliefThisCycle = true;
+if (r.crewPreOrdered && !r.readyDone) {
+    // A-29: an early crew ran out of duty before the rake was ready; order another without touching the rake's phase
+    r.crewOnBoardEarly = false;
+    qCrew.add(r);
+    dispatch();
+    return;
+}
 if (r.planned != null) { (r.loaded ? dnBlock : upBlock).remove(r.planned); r.planned = null; }
 qDepartGGS.remove(r);
 qLineTAE.remove(r);
@@ -3581,7 +3696,7 @@ dispatch();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000407</Id>
+<Id>1791000000413</Id>
 <Name><![CDATA[signOff]]></Name>
 <Description><![CDATA[Crew signs off; returns to the Balharshah lobby and takes HQ rest (CR-04: 12 h after < 8 h duty, 16 h after >= 8 h).]]></Description>
 <X>2660</X><Y>86</Y>
@@ -3611,7 +3726,7 @@ schedAfter(back + rest, () -> { cc.busy = false; dispatch(); });]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[boolean]]></ReturnType>
-<Id>1791000000408</Id>
+<Id>1791000000414</Id>
 <Name><![CDATA[allocLine]]></Name>
 <Description><![CDATA[Single-line controller (A-22): loaded rakes from GGS first (needs a TAE loop), then empties from TAE (needs a GGS loop). Doubling (E5) gives each direction its own line.]]></Description>
 <X>2660</X><Y>112</Y>
@@ -3619,8 +3734,16 @@ schedAfter(back + rest, () -> { cc.busy = false; dispatch(); });]]></Body>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Body><![CDATA[// loaded GGS -> TAE
-if (!lineBusyDN && !(!cDoubled && lineBusyUP) && !qDepartGGS.isEmpty() && taeLoopLoaded + taeLoopEmpty < cTaeLoops) {
+<Body><![CDATA[boolean canL = !lineBusyDN && !(!cDoubled && lineBusyUP) && !qDepartGGS.isEmpty() && taeLoopLoaded + taeLoopEmpty < cTaeLoops;
+boolean canE = !lineBusyUP && !(!cDoubled && lineBusyDN) && !qLineTAE.isEmpty() && ggsLoopUsed < cGgsLoops;
+// A-28 dispatch rule when both directions could go on a single line: 0 loaded first (A-22), 1 alternate, 2 batches
+boolean preferE = false;
+if (!cDoubled && canL && canE) {
+    if (cDispatch == 1) preferE = lastDir == 0;
+    else if (cDispatch == 2) preferE = lastDir == 0 ? batchN >= cBatch : (lastDir == 1 && batchN < cBatch);
+}
+// loaded GGS -> TAE
+if (canL && !preferE) {
     Rake r = pickLoaded();
     boolean emptyFirst = false;
     if (cPolicy == 2 && !cDoubled && !qLineTAE.isEmpty() && ggsLoopUsed < cGgsLoops) {
@@ -3631,6 +3754,7 @@ if (!lineBusyDN && !(!cDoubled && lineBusyUP) && !qDepartGGS.isEmpty() && taeLoo
         double occ = rTri(spurOccMin_A04, spurOccMode_A04, spurOccMax_A04) / 60.0;
         if (cCrewOn && time() + occ > dutyLimitFor(r.crew)) { relieve(r); return true; }
         qDepartGGS.remove(r);
+        noteDir(0);
         lineBusyDN = true;
         taeLoopLoaded++;
         r.holdsTaeLoop = true;
@@ -3656,6 +3780,7 @@ if (!lineBusyUP && !(!cDoubled && lineBusyDN) && !qLineTAE.isEmpty() && ggsLoopU
     double occ = rTri(spurOccMin_A04, spurOccMode_A04, spurOccMax_A04) / 60.0;
     if (cCrewOn && time() + occ > dutyLimitFor(r.crew)) { relieve(r); return true; }
     qLineTAE.remove(0);
+    noteDir(1);
     lineBusyUP = true;
     ggsLoopUsed++;
     r.holdsGgsLoop = true;
@@ -3678,7 +3803,7 @@ return false;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[Rake]]></ReturnType>
-<Id>1791000000409</Id>
+<Id>1791000000415</Id>
 <Name><![CDATA[pickLoaded]]></Name>
 <Description><![CDATA[Which loaded rake at GGS goes first: FCFS, or (policy 2) the one whose crew has least duty left.]]></Description>
 <X>2660</X><Y>138</Y>
@@ -3693,7 +3818,7 @@ return best;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000410</Id>
+<Id>1791000000416</Id>
 <Name><![CDATA[crewLeft]]></Name>
 <Description><![CDATA[Hours of duty left for the crew on rake r.]]></Description>
 <X>2660</X><Y>164</Y>
@@ -3711,7 +3836,7 @@ return dutyLimitFor(r.crew) - time();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000411</Id>
+<Id>1791000000417</Id>
 <Name><![CDATA[planMerge]]></Name>
 <Description><![CDATA[Loaded rake in a TAE loop: find the first DN path with gap A-05 either side of every passenger/goods train and reserve it.]]></Description>
 <X>2660</X><Y>190</Y>
@@ -3738,7 +3863,7 @@ schedAt(t, () -> { if (r.token == tok) mergeDN(r, run); });]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000412</Id>
+<Id>1791000000418</Id>
 <Name><![CDATA[mergeDN]]></Name>
 <Description><![CDATA[Rake leaves the TAE loop onto the DN main line and runs ~13 km to CD/CSTPS.]]></Description>
 <X>2660</X><Y>216</Y>
@@ -3769,7 +3894,7 @@ dispatch();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000413</Id>
+<Id>1791000000419</Id>
 <Name><![CDATA[arriveCSTPS]]></Name>
 <Description><![CDATA[Loaded rake reaches CSTPS: crew signs off, railway places the rake (A-15); free time FT-02 runs from placement.]]></Description>
 <X>2660</X><Y>242</Y>
@@ -3798,7 +3923,7 @@ schedAfter(rTri(placeUnloadMin_A15, placeUnloadMode_A15, placeUnloadMax_A15), ()
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[boolean]]></ReturnType>
-<Id>1791000000414</Id>
+<Id>1791000000420</Id>
 <Name><![CDATA[startTippler]]></Name>
 <Description><![CDATA[Next placed rake goes to a free tippler (A-17 in service).]]></Description>
 <X>2660</X><Y>268</Y>
@@ -3822,7 +3947,7 @@ return true;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000415</Id>
+<Id>1791000000421</Id>
 <Name><![CDATA[unloadDone]]></Name>
 <Description><![CDATA[Tippling finished: coal into CSTPS stock, demurrage on placement->release over FT-02, then A-16 release->despatch.]]></Description>
 <X>2660</X><Y>294</Y>
@@ -3849,7 +3974,7 @@ dispatch();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000416</Id>
+<Id>1791000000422</Id>
 <Name><![CDATA[releasedAtCD]]></Name>
 <Description><![CDATA[Empty ready at CSTPS: divert to the BPC exam if due (phase 3), otherwise ask for a crew.]]></Description>
 <X>2660</X><Y>320</Y>
@@ -3863,7 +3988,7 @@ dispatch();]]></Body>
 </Parameter>
 <Body><![CDATA[r.loc = L_CD;
 r.loaded = false;
-if (cBpcOn && (time() >= r.bpcDue - bpcLookaheadDays * 24 || r.bpcKm < 2 * (spurKm_INF01 + mainKm_INF08) + 2 * depotKm_A10)) {
+if (cBpcOn && (time() >= r.bpcDue - cBpcLook * 24 || r.bpcKm < 2 * (spurKm_INF01 + mainKm_INF08) + 2 * depotKm_A10)) {
     goBpc(r);
     return;
 }
@@ -3874,7 +3999,7 @@ dispatch();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[boolean]]></ReturnType>
-<Id>1791000000417</Id>
+<Id>1791000000423</Id>
 <Name><![CDATA[departCD]]></Name>
 <Description><![CDATA[Controller orders the next empty out of CSTPS only when a TAE loop (not the one kept for loaded rakes) is free and, if A-27, Ghugus has a free loop; then the crew is booked.]]></Description>
 <X>2660</X><Y>346</Y>
@@ -3894,7 +4019,7 @@ return true;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000418</Id>
+<Id>1791000000424</Id>
 <Name><![CDATA[planDepartCD]]></Name>
 <Description><![CDATA[Empty at CD with crew and a reserved TAE loop: take the first UP path with gap A-05 and run to Tadali.]]></Description>
 <X>2660</X><Y>372</Y>
@@ -3935,7 +4060,7 @@ schedAt(t, () -> {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000419</Id>
+<Id>1791000000425</Id>
 <Name><![CDATA[goBpc]]></Name>
 <Description><![CDATA[BPC detour (phase 3): empty runs CD -> Balharshah depot (A-10), waits for placement (A-11), then the 8 h intensive exam (A-12) in daylight only.]]></Description>
 <X>2660</X><Y>398</Y>
@@ -3958,7 +4083,7 @@ schedAfter(travel + rTri(examWaitMin_A11, examWaitMode_A11, examWaitMax_A11), ()
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[boolean]]></ReturnType>
-<Id>1791000000420</Id>
+<Id>1791000000426</Id>
 <Name><![CDATA[startExam]]></Name>
 <Description><![CDATA[One examination line at the depot (capacity 1).]]></Description>
 <X>2660</X><Y>424</Y>
@@ -3976,7 +4101,7 @@ return true;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000421</Id>
+<Id>1791000000427</Id>
 <Name><![CDATA[examWork]]></Name>
 <Description><![CDATA[Exam work only progresses between examOpenHour and examCloseHour (BPC-03 daylight window).]]></Description>
 <X>2660</X><Y>450</Y>
@@ -4013,7 +4138,7 @@ if (remaining <= can) {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000422</Id>
+<Id>1791000000428</Id>
 <Name><![CDATA[chargeDemurrage]]></Name>
 <Description><![CDATA[DM-01: Rs/wagon/hour or part over free time, graded slabs (+10% 6-12 h, +25% 12-24 h, +50% 24-48 h, 2x 48-72 h, 3x > 72 h).]]></Description>
 <X>2660</X><Y>476</Y>
@@ -4051,7 +4176,7 @@ if (loading) demurrageLoadRs += rs; else demurrageUnloadRs += rs;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000423</Id>
+<Id>1791000000429</Id>
 <Name><![CDATA[closeCycle]]></Name>
 <Description><![CDATA[A rake is back at Ghugus: record the cycle (if it started after warm-up) and write a RAKE_cycle_log row.]]></Description>
 <X>2660</X><Y>502</Y>
@@ -4069,6 +4194,7 @@ if (r.cycleStart >= statsStart && statsStart > 0) {
     cyclesDone++;
     sumCycle += ct;
     sumCycleSq += ct * ct;
+    cycleTimes.add(ct);
     for (int k = 0; k < NPH; k++) compSum[k] += r.comp[k];
     if (r.reliefThisCycle) reliefCycles++;
     if (r.bpcThisCycle) bpcCycles++;
@@ -4088,7 +4214,7 @@ if (writeCycleLog) {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
-<Id>1791000000424</Id>
+<Id>1791000000430</Id>
 <Name><![CDATA[stampText]]></Name>
 <Description><![CDATA[Model hours -> "yyyy-MM-dd HH:mm" (day 0 = 2026-10-05).]]></Description>
 <X>2660</X><Y>528</Y>
@@ -4106,7 +4232,7 @@ return String.format("%04d-%02d-%02d %02d:%02d", d.getYear(), d.getMonthValue(),
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000425</Id>
+<Id>1791000000431</Id>
 <Name><![CDATA[touchStats]]></Name>
 <Description><![CDATA[Time-weighted utilisation integrals (called before every kernel event).]]></Description>
 <X>2660</X><Y>554</Y>
@@ -4126,13 +4252,21 @@ if (dt > 0 && t > statsStart) {
     int onDuty = 0;
     for (Crew c : crews) if (c.rake != null) onDuty++;
     areaCrewOnDuty += onDuty * dt;
+    int mq = 0, lq = 0, bp = 0;
+    for (Rake r : rakes) {
+        if (r.phase == P_WAIT_MERGE_DN) mq++;
+        if (r.phase == P_WAIT_PATH_GGS || r.phase == P_WAIT_LINE_TAE) lq++;
+        if (r.phase == P_BPC) bp++;
+    }
+    areaMergeQ += mq * dt; areaLineQ += lq * dt; areaBpc += bp * dt;
+    if (mq > maxMergeQ) maxMergeQ = mq;
 }
 lastTouch = t;]]></Body>
 </Function>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000426</Id>
+<Id>1791000000432</Id>
 <Name><![CDATA[resetStats]]></Name>
 <Description><![CDATA[End of warm-up (3 days): zero every statistic.]]></Description>
 <X>2660</X><Y>580</Y>
@@ -4148,6 +4282,7 @@ tonnes = 0; sumCycle = 0; sumCycleSq = 0; demurrageRs = 0; demurrageLoadRs = 0; 
 java.util.Arrays.fill(compSum, 0);
 areaLineDN = 0; areaLineUP = 0; areaSidings = 0; areaTipplers = 0; areaGgsLoops = 0; areaTaeLoops = 0; areaCrewOnDuty = 0;
 mergeWaitSum = 0; mergeCount = 0; dutySum = 0; reliefCycles = 0; bpcCycles = 0;
+areaMergeQ = 0; areaLineQ = 0; areaBpc = 0; maxMergeQ = 0; cycleTimes.clear();
 deliveryTimes.clear();
 stockMinDays = stockKt / normativeDaily_kt;
 daysBelow7 = 0;]]></Body>
@@ -4155,7 +4290,7 @@ daysBelow7 = 0;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000427</Id>
+<Id>1791000000433</Id>
 <Name><![CDATA[statHours]]></Name>
 <Description><![CDATA[Length of the statistics window so far (hours).]]></Description>
 <X>2660</X><Y>606</Y>
@@ -4168,7 +4303,7 @@ daysBelow7 = 0;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000428</Id>
+<Id>1791000000434</Id>
 <Name><![CDATA[rakesPerDay]]></Name>
 <Description><![CDATA[KPI 2: loaded rakes placed at CSTPS per day after warm-up.]]></Description>
 <X>2660</X><Y>632</Y>
@@ -4181,7 +4316,7 @@ daysBelow7 = 0;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000429</Id>
+<Id>1791000000435</Id>
 <Name><![CDATA[meanCycle]]></Name>
 <Description><![CDATA[KPI 1: mean rake cycle time (h), GGS arrival to next GGS arrival.]]></Description>
 <X>2660</X><Y>658</Y>
@@ -4194,10 +4329,115 @@ daysBelow7 = 0;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000430</Id>
+<Id>1791000000436</Id>
+<Name><![CDATA[p90Cycle]]></Name>
+<Description><![CDATA[KPI 1: 90th percentile of rake cycle time (h).]]></Description>
+<X>2660</X><Y>684</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Body><![CDATA[if (cycleTimes.isEmpty()) return 0;
+java.util.ArrayList<Double> v = new java.util.ArrayList<Double>(cycleTimes);
+java.util.Collections.sort(v);
+return v.get(Math.min(v.size() - 1, (int) Math.ceil(0.9 * v.size()) - 1));]]></Body>
+</Function>
+<Function AccessType="default" StaticFunction="false">
+<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+<ReturnType><![CDATA[double]]></ReturnType>
+<Id>1791000000437</Id>
+<Name><![CDATA[mergeQueueAvg]]></Name>
+<Description><![CDATA[KPI: time-average number of loaded rakes waiting in the Tadali loops for a DN path.]]></Description>
+<X>2660</X><Y>710</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Body><![CDATA[return statsStart <= 0 ? 0 : areaMergeQ / statHours();]]></Body>
+</Function>
+<Function AccessType="default" StaticFunction="false">
+<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+<ReturnType><![CDATA[double]]></ReturnType>
+<Id>1791000000438</Id>
+<Name><![CDATA[lineQueueAvg]]></Name>
+<Description><![CDATA[KPI: time-average number of rakes waiting for the single line (at GGS or TAE).]]></Description>
+<X>2660</X><Y>736</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Body><![CDATA[return statsStart <= 0 ? 0 : areaLineQ / statHours();]]></Body>
+</Function>
+<Function AccessType="default" StaticFunction="false">
+<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+<ReturnType><![CDATA[double]]></ReturnType>
+<Id>1791000000439</Id>
+<Name><![CDATA[crewExpiriesPer100]]></Name>
+<Description><![CDATA[KPI: crew duty expiries (reliefs) per 100 crew trips.]]></Description>
+<X>2660</X><Y>762</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Body><![CDATA[return crewTrips == 0 ? 0 : 100.0 * reliefEvents / crewTrips;]]></Body>
+</Function>
+<Function AccessType="default" StaticFunction="false">
+<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+<ReturnType><![CDATA[double]]></ReturnType>
+<Id>1791000000440</Id>
+<Name><![CDATA[examHoursPerRakeMonth]]></Name>
+<Description><![CDATA[KPI: hours per rake per 30-day month spent on the BPC exam detour (travel, wait, exam).]]></Description>
+<X>2920</X><Y>60</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Body><![CDATA[return statsStart <= 0 ? 0 : areaBpc / cFleet / (statHours() / 720.0);]]></Body>
+</Function>
+<Function AccessType="default" StaticFunction="false">
+<ReturnModificator>VOID</ReturnModificator>
+<ReturnType><![CDATA[double]]></ReturnType>
+<Id>1791000000441</Id>
+<Name><![CDATA[noteDir]]></Name>
+<Description><![CDATA[Remember the direction of the move just given the single line (for the A-28 alternating / batched rules).]]></Description>
+<X>2920</X><Y>86</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Parameter>
+<Name><![CDATA[d]]></Name>
+<Type><![CDATA[int]]></Type>
+</Parameter>
+<Body><![CDATA[if (d == lastDir) batchN++; else { lastDir = d; batchN = 1; }]]></Body>
+</Function>
+<Function AccessType="default" StaticFunction="false">
+<ReturnModificator>VOID</ReturnModificator>
+<ReturnType><![CDATA[double]]></ReturnType>
+<Id>1791000000442</Id>
+<Name><![CDATA[preOrderCrew]]></Name>
+<Description><![CDATA[A-29: order the crew for a rake that is still loading, unless the rake is already ready or has one.]]></Description>
+<X>2920</X><Y>112</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Parameter>
+<Name><![CDATA[r]]></Name>
+<Type><![CDATA[Rake]]></Type>
+</Parameter>
+<Body><![CDATA[if (r.readyDone || r.crew != null || qCrew.contains(r) || r.loc != L_GGS) return;
+r.crewPreOrdered = true;
+qCrew.add(r);
+dispatch();]]></Body>
+</Function>
+<Function AccessType="default" StaticFunction="false">
+<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+<ReturnType><![CDATA[double]]></ReturnType>
+<Id>1791000000443</Id>
 <Name><![CDATA[compMean]]></Name>
 <Description><![CDATA[Mean hours per cycle spent in component k.]]></Description>
-<X>2660</X><Y>684</Y>
+<X>2920</X><Y>138</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4211,10 +4451,10 @@ daysBelow7 = 0;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000431</Id>
+<Id>1791000000444</Id>
 <Name><![CDATA[groupMean]]></Name>
 <Description><![CDATA[Mean hours per cycle in KPI group g (bar chart).]]></Description>
-<X>2660</X><Y>710</Y>
+<X>2920</X><Y>164</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4230,10 +4470,10 @@ return s;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000432</Id>
+<Id>1791000000445</Id>
 <Name><![CDATA[lineUtil]]></Name>
 <Description><![CDATA[KPI 3: single-line occupancy (both directions; 0..1 for a single line).]]></Description>
-<X>2660</X><Y>736</Y>
+<X>2920</X><Y>190</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4243,10 +4483,10 @@ return s;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000433</Id>
+<Id>1791000000446</Id>
 <Name><![CDATA[tipplerUtil]]></Name>
 <Description><![CDATA[KPI 3: tippler utilisation.]]></Description>
-<X>2660</X><Y>762</Y>
+<X>2920</X><Y>216</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4256,10 +4496,10 @@ return s;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000434</Id>
+<Id>1791000000447</Id>
 <Name><![CDATA[sidingUtil]]></Name>
 <Description><![CDATA[KPI 3: loading-siding occupancy (loading + loaded rakes standing on the siding).]]></Description>
-<X>2920</X><Y>60</Y>
+<X>2920</X><Y>242</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4269,10 +4509,10 @@ return s;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000435</Id>
+<Id>1791000000448</Id>
 <Name><![CDATA[demurragePerRake]]></Name>
 <Description><![CDATA[KPI 4: demurrage Rs per delivered rake (both ends).]]></Description>
-<X>2920</X><Y>86</Y>
+<X>2920</X><Y>268</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4282,10 +4522,10 @@ return s;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000436</Id>
+<Id>1791000000449</Id>
 <Name><![CDATA[shareRelief]]></Name>
 <Description><![CDATA[KPI 5: share of completed cycles with a crew-expired stabling.]]></Description>
-<X>2920</X><Y>112</Y>
+<X>2920</X><Y>294</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4295,10 +4535,10 @@ return s;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000437</Id>
+<Id>1791000000450</Id>
 <Name><![CDATA[shareBpc]]></Name>
 <Description><![CDATA[KPI 5: share of completed cycles with a BPC exam detour.]]></Description>
-<X>2920</X><Y>138</Y>
+<X>2920</X><Y>320</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4308,10 +4548,10 @@ return s;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000438</Id>
+<Id>1791000000451</Id>
 <Name><![CDATA[stockDays]]></Name>
 <Description><![CDATA[KPI 6: CSTPS coal stock in days of normative requirement.]]></Description>
-<X>2920</X><Y>164</Y>
+<X>2920</X><Y>346</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4321,10 +4561,10 @@ return s;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000439</Id>
+<Id>1791000000452</Id>
 <Name><![CDATA[deliveredLast24h]]></Name>
 <Description><![CDATA[Rolling count of rakes placed at CSTPS in the last 24 h (time plot).]]></Description>
-<X>2920</X><Y>190</Y>
+<X>2920</X><Y>372</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4336,10 +4576,10 @@ return n;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
-<Id>1791000000440</Id>
+<Id>1791000000453</Id>
 <Name><![CDATA[kpiText]]></Name>
 <Description><![CDATA[The KPI panel on the Main view.]]></Description>
-<X>2920</X><Y>216</Y>
+<X>2920</X><Y>398</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4347,31 +4587,31 @@ return n;]]></Body>
 <Body><![CDATA[String s = String.format(java.util.Locale.US,
     "Day %.1f   %s   (stats from day %.0f)\n\n" +
     "Rakes placed at CSTPS   %d   =  %.2f rakes/day   (%.1f kt/day)\n" +
-    "Mean cycle time         %.1f h   over %d cycles\n" +
+    "Mean cycle time         %.1f h   (P90 %.1f h)   over %d cycles\n" +
     "Single line busy        %.0f %%     Sidings busy %.0f %%     Tipplers busy %.0f %%\n" +
-    "Mean wait for DN path   %.2f h at Tadali\n" +
+    "Mean wait for DN path   %.2f h at Tadali   (queue avg %.2f, max %d)\n" +
     "Demurrage               Rs %.0f per rake  (loading %d/%d over FT, unloading %d/%d)\n" +
-    "Crew relief cycles      %.0f %%   duty extensions %d\n" +
-    "BPC detour cycles       %.0f %%   overdue exams %d\n" +
+    "Crew relief cycles      %.0f %%   duty extensions %d   expiries per 100 trips %.1f\n" +
+    "BPC detour cycles       %.0f %%   overdue exams %d   exam h/rake/month %.1f\n" +
     "CSTPS stock             %.1f days  (min %.1f, days below 7: %d)",
     time() / 24, stampText(time()), statsStart / 24,
     delivered, rakesPerDay(), rakesPerDay() * payload_t / 1000,
-    meanCycle(), cyclesDone,
+    meanCycle(), p90Cycle(), cyclesDone,
     100 * lineUtil(), 100 * sidingUtil(), 100 * tipplerUtil(),
-    mergeCount == 0 ? 0 : mergeWaitSum / mergeCount,
+    mergeCount == 0 ? 0 : mergeWaitSum / mergeCount, mergeQueueAvg(), maxMergeQ,
     demurragePerRake(), loadOverFree, loadEnds, unloadOverFree, unloadEnds,
-    100 * shareRelief(), extensions,
-    100 * shareBpc(), bpcOverdue,
+    100 * shareRelief(), extensions, crewExpiriesPer100(),
+    100 * shareBpc(), bpcOverdue, examHoursPerRakeMonth(),
     stockDays(), stockMinDays == Double.POSITIVE_INFINITY ? stockDays() : stockMinDays, daysBelow7);
 return s;]]></Body>
 </Function>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
-<Id>1791000000441</Id>
+<Id>1791000000454</Id>
 <Name><![CDATA[decompText]]></Name>
 <Description><![CDATA[Cycle-time decomposition table (KPI 1).]]></Description>
-<X>2920</X><Y>242</Y>
+<X>2920</X><Y>424</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4385,10 +4625,10 @@ return sb.toString();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
-<Id>1791000000442</Id>
+<Id>1791000000455</Id>
 <Name><![CDATA[nextTrainsText]]></Name>
 <Description><![CDATA[Next DN passings at Tadali and UP departures from Chandrapur (passenger + goods + own rakes).]]></Description>
-<X>2920</X><Y>268</Y>
+<X>2920</X><Y>450</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4404,10 +4644,10 @@ return sb.toString();]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
-<Id>1791000000443</Id>
+<Id>1791000000456</Id>
 <Name><![CDATA[blockerText]]></Name>
 <Description><![CDATA[One line of the next-trains board.]]></Description>
-<X>2920</X><Y>294</Y>
+<X>2920</X><Y>476</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4422,10 +4662,10 @@ return String.format("%02d:%02d %s", m / 60, m % 60, x.kind == B_PAX ? x.label :
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[Rake]]></ReturnType>
-<Id>1791000000444</Id>
+<Id>1791000000457</Id>
 <Name><![CDATA[rakeAt]]></Name>
 <Description><![CDATA[Animation helper: rake with index i, or null.]]></Description>
-<X>2920</X><Y>320</Y>
+<X>2920</X><Y>502</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4439,10 +4679,10 @@ return String.format("%02d:%02d %s", m / 60, m % 60, x.kind == B_PAX ? x.label :
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000445</Id>
+<Id>1791000000458</Id>
 <Name><![CDATA[rakeProgress]]></Name>
 <Description><![CDATA[0..1 progress through a moving phase.]]></Description>
-<X>2920</X><Y>346</Y>
+<X>2920</X><Y>528</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4457,10 +4697,10 @@ return Math.max(0, Math.min(1, (time() - r.phaseStart) / (r.phaseEnd - r.phaseSt
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[int]]></ReturnType>
-<Id>1791000000446</Id>
+<Id>1791000000459</Id>
 <Name><![CDATA[slotOf]]></Name>
 <Description><![CDATA[Animation helper: position of r among rakes standing in the same place.]]></Description>
-<X>2920</X><Y>372</Y>
+<X>2920</X><Y>554</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4486,10 +4726,10 @@ return n;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000447</Id>
+<Id>1791000000460</Id>
 <Name><![CDATA[rakeX]]></Name>
 <Description><![CDATA[Animation: x of rake i.]]></Description>
-<X>2920</X><Y>398</Y>
+<X>2920</X><Y>580</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4516,10 +4756,10 @@ return 1090 + (slotOf(r, 2) % 5) * 52;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000448</Id>
+<Id>1791000000461</Id>
 <Name><![CDATA[rakeY]]></Name>
 <Description><![CDATA[Animation: y of rake i.]]></Description>
-<X>2920</X><Y>424</Y>
+<X>2920</X><Y>606</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4549,10 +4789,10 @@ return 566 + (slotOf(r, 2) / 5) * 22;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[boolean]]></ReturnType>
-<Id>1791000000449</Id>
+<Id>1791000000462</Id>
 <Name><![CDATA[rakeVertical]]></Name>
 <Description><![CDATA[Rakes on the main line are drawn upright.]]></Description>
-<X>2920</X><Y>450</Y>
+<X>2920</X><Y>632</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4567,10 +4807,10 @@ return r != null && (r.phase == P_MAIN_L || r.phase == P_MAIN_E);]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[java.awt.Color]]></ReturnType>
-<Id>1791000000450</Id>
+<Id>1791000000463</Id>
 <Name><![CDATA[rakeColor]]></Name>
 <Description><![CDATA[Loaded = coal black, empty = wagon brown, crew relief = red, BPC = orange.]]></Description>
-<X>2920</X><Y>476</Y>
+<X>2920</X><Y>658</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4588,10 +4828,10 @@ return r.loaded ? new java.awt.Color(40, 40, 40) : new java.awt.Color(176, 128, 
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
-<Id>1791000000451</Id>
+<Id>1791000000464</Id>
 <Name><![CDATA[rakeLabel]]></Name>
 <Description><![CDATA[Short label: rake number and phase code.]]></Description>
-<X>2920</X><Y>502</Y>
+<X>2920</X><Y>684</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4607,10 +4847,10 @@ return "R" + r.id;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000452</Id>
+<Id>1791000000465</Id>
 <Name><![CDATA[paxY]]></Name>
 <Description><![CDATA[Animation: y of the k-th passenger/goods train currently near the TAE-CD stretch (or -1000).]]></Description>
-<X>2920</X><Y>528</Y>
+<X>2920</X><Y>710</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4636,10 +4876,10 @@ return -1000;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[java.awt.Color]]></ReturnType>
-<Id>1791000000453</Id>
+<Id>1791000000466</Id>
 <Name><![CDATA[paxColor]]></Name>
 <Description><![CDATA[Passenger trains blue, through goods grey.]]></Description>
-<X>2920</X><Y>554</Y>
+<X>2920</X><Y>736</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4665,10 +4905,10 @@ return java.awt.Color.GRAY;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
-<Id>1791000000454</Id>
+<Id>1791000000467</Id>
 <Name><![CDATA[resourceText]]></Name>
 <Description><![CDATA[Live occupancy of the constrained resources.]]></Description>
-<X>2920</X><Y>580</Y>
+<X>2920</X><Y>762</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4681,10 +4921,10 @@ return java.awt.Color.GRAY;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[int]]></ReturnType>
-<Id>1791000000455</Id>
+<Id>1791000000468</Id>
 <Name><![CDATA[freeCrews]]></Name>
 <Description><![CDATA[Crews resting-complete and available at the lobby.]]></Description>
-<X>2920</X><Y>606</Y>
+<X>3180</X><Y>60</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4696,10 +4936,10 @@ return n;]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>VOID</ReturnModificator>
 <ReturnType><![CDATA[double]]></ReturnType>
-<Id>1791000000456</Id>
+<Id>1791000000469</Id>
 <Name><![CDATA[writeResults]]></Name>
 <Description><![CDATA[At the end of a run: append one KPI row to RakeFlow_runs.csv and write the per-cycle log (RAKE_cycle_log format).]]></Description>
-<X>2920</X><Y>632</Y>
+<X>3180</X><Y>86</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4713,12 +4953,15 @@ try {
     if (header) {
         StringBuilder h = new StringBuilder("seed,phase,scenario,fleet,rakesPerDay,meanCycle_h,cycles,lineUtil,sidingUtil,tipplerUtil,demurrageRsPerRake,shareRelief,shareBpc,stockMinDays");
         for (int g = 0; g < GRP_NAME.length; g++) h.append(",grp_").append(GRP_NAME[g].replace(' ', '_'));
+        h.append(",p90Cycle_h,tonnesPerDay,mergeQueueAvg,lineQueueAvg,crewExpiriesPer100Trips,examHoursPerRakeMonth");
         w.println(h);
     }
     StringBuilder s = new StringBuilder(String.format(java.util.Locale.US, "%d,%d,%d,%d,%.4f,%.3f,%d,%.4f,%.4f,%.4f,%.1f,%.4f,%.4f,%.2f",
         seed, cPhase, scenario, cFleet, rakesPerDay(), meanCycle(), cyclesDone, lineUtil(), sidingUtil(), tipplerUtil(),
         demurragePerRake(), shareRelief(), shareBpc(), stockMinDays));
     for (int g = 0; g < GRP_NAME.length; g++) s.append(String.format(java.util.Locale.US, ",%.3f", groupMean(g)));
+    s.append(String.format(java.util.Locale.US, ",%.3f,%.0f,%.4f,%.4f,%.3f,%.3f", p90Cycle(), rakesPerDay() * payload_t,
+        mergeQueueAvg(), lineQueueAvg(), crewExpiriesPer100(), examHoursPerRakeMonth()));
     w.println(s);
     w.close();
     if (writeCycleLog) {
@@ -4734,10 +4977,10 @@ try {
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[java.awt.Color]]></ReturnType>
-<Id>1791000000457</Id>
+<Id>1791000000470</Id>
 <Name><![CDATA[tipplerColor]]></Name>
 <Description><![CDATA[Tippler t: green = tippling, light grey = idle, dark grey = not in service (A-17).]]></Description>
-<X>2920</X><Y>658</Y>
+<X>3180</X><Y>112</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4752,10 +4995,10 @@ return tipplerUsed[t] ? new java.awt.Color(60, 170, 80) : new java.awt.Color(215
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[java.awt.Color]]></ReturnType>
-<Id>1791000000458</Id>
+<Id>1791000000471</Id>
 <Name><![CDATA[sidingColor]]></Name>
 <Description><![CDATA[Loading siding k: amber = loading, red = loaded rake blocking it, light = free, dark = not provided.]]></Description>
-<X>2920</X><Y>684</Y>
+<X>3180</X><Y>138</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4771,10 +5014,10 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Function AccessType="default" StaticFunction="false">
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
-<Id>1791000000459</Id>
+<Id>1791000000472</Id>
 <Name><![CDATA[headerText]]></Name>
 <Description><![CDATA[Clock and configuration line on the Main view.]]></Description>
-<X>2920</X><Y>710</Y>
+<X>3180</X><Y>164</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -4798,7 +5041,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <LevelVisibility>DIM_NON_CURRENT</LevelVisibility>
 <Presentation>
 <Rectangle>
-<Id>1791000000197</Id>
+<Id>1791000000203</Id>
 <Name><![CDATA[bg]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -4820,7 +5063,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000198</Id>
+<Id>1791000000204</Id>
 <Name><![CDATA[title]]></Name>
 <X>20</X><Y>12</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -4841,7 +5084,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000199</Id>
+<Id>1791000000205</Id>
 <Name><![CDATA[clock]]></Name>
 <X>20</X><Y>42</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -4863,7 +5106,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000200</Id>
+<Id>1791000000206</Id>
 <Name><![CDATA[resources]]></Name>
 <X>20</X><Y>64</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -4885,7 +5128,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000201</Id>
+<Id>1791000000207</Id>
 <Name><![CDATA[ggsYard]]></Name>
 <X>40</X><Y>230</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -4907,7 +5150,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000202</Id>
+<Id>1791000000208</Id>
 <Name><![CDATA[ggsName]]></Name>
 <X>50</X><Y>238</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -4928,7 +5171,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000203</Id>
+<Id>1791000000209</Id>
 <Name><![CDATA[ggsNote]]></Name>
 <X>50</X><Y>256</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -4949,7 +5192,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000204</Id>
+<Id>1791000000210</Id>
 <Name><![CDATA[ggsLoop0]]></Name>
 <X>60</X><Y>290</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -4974,7 +5217,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[0 < cGgsLoops]]></VisibleCode>
 </Line>
 <Text>
-<Id>1791000000205</Id>
+<Id>1791000000211</Id>
 <Name><![CDATA[ggsLoopLbl0]]></Name>
 <X>60</X><Y>274</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -4996,7 +5239,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000206</Id>
+<Id>1791000000212</Id>
 <Name><![CDATA[ggsLoop1]]></Name>
 <X>60</X><Y>318</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5021,7 +5264,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[1 < cGgsLoops]]></VisibleCode>
 </Line>
 <Text>
-<Id>1791000000207</Id>
+<Id>1791000000213</Id>
 <Name><![CDATA[ggsLoopLbl1]]></Name>
 <X>60</X><Y>302</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5043,7 +5286,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000208</Id>
+<Id>1791000000214</Id>
 <Name><![CDATA[ggsLoop2]]></Name>
 <X>60</X><Y>346</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5068,7 +5311,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[2 < cGgsLoops]]></VisibleCode>
 </Line>
 <Text>
-<Id>1791000000209</Id>
+<Id>1791000000215</Id>
 <Name><![CDATA[ggsLoopLbl2]]></Name>
 <X>60</X><Y>330</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5090,7 +5333,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000210</Id>
+<Id>1791000000216</Id>
 <Name><![CDATA[ggsLoop3]]></Name>
 <X>60</X><Y>374</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5115,7 +5358,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[3 < cGgsLoops]]></VisibleCode>
 </Line>
 <Text>
-<Id>1791000000211</Id>
+<Id>1791000000217</Id>
 <Name><![CDATA[ggsLoopLbl3]]></Name>
 <X>60</X><Y>358</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5137,7 +5380,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000212</Id>
+<Id>1791000000218</Id>
 <Name><![CDATA[sidNote]]></Name>
 <X>50</X><Y>392</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5158,7 +5401,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000213</Id>
+<Id>1791000000219</Id>
 <Name><![CDATA[siding0]]></Name>
 <X>60</X><Y>402</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5182,7 +5425,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[0 < cSidings]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000214</Id>
+<Id>1791000000220</Id>
 <Name><![CDATA[sidingLbl0]]></Name>
 <X>66</X><Y>414</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5204,7 +5447,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000215</Id>
+<Id>1791000000221</Id>
 <Name><![CDATA[sidingTrack0]]></Name>
 <X>130</X><Y>410</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5229,7 +5472,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[0 < cSidings]]></VisibleCode>
 </Line>
 <Rectangle>
-<Id>1791000000216</Id>
+<Id>1791000000222</Id>
 <Name><![CDATA[siding1]]></Name>
 <X>60</X><Y>430</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5253,7 +5496,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[1 < cSidings]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000217</Id>
+<Id>1791000000223</Id>
 <Name><![CDATA[sidingLbl1]]></Name>
 <X>66</X><Y>442</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5275,7 +5518,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000218</Id>
+<Id>1791000000224</Id>
 <Name><![CDATA[sidingTrack1]]></Name>
 <X>130</X><Y>438</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5300,7 +5543,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[1 < cSidings]]></VisibleCode>
 </Line>
 <Rectangle>
-<Id>1791000000219</Id>
+<Id>1791000000225</Id>
 <Name><![CDATA[siding2]]></Name>
 <X>60</X><Y>458</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5324,7 +5567,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[2 < cSidings]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000220</Id>
+<Id>1791000000226</Id>
 <Name><![CDATA[sidingLbl2]]></Name>
 <X>66</X><Y>470</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5346,7 +5589,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000221</Id>
+<Id>1791000000227</Id>
 <Name><![CDATA[sidingTrack2]]></Name>
 <X>130</X><Y>466</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5371,7 +5614,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[2 < cSidings]]></VisibleCode>
 </Line>
 <Rectangle>
-<Id>1791000000222</Id>
+<Id>1791000000228</Id>
 <Name><![CDATA[siding3]]></Name>
 <X>60</X><Y>486</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5395,7 +5638,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[3 < cSidings]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000223</Id>
+<Id>1791000000229</Id>
 <Name><![CDATA[sidingLbl3]]></Name>
 <X>66</X><Y>498</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5417,7 +5660,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000224</Id>
+<Id>1791000000230</Id>
 <Name><![CDATA[sidingTrack3]]></Name>
 <X>130</X><Y>494</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5442,7 +5685,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[3 < cSidings]]></VisibleCode>
 </Line>
 <Line>
-<Id>1791000000225</Id>
+<Id>1791000000231</Id>
 <Name><![CDATA[spur]]></Name>
 <X>330</X><Y>262</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5466,7 +5709,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Dz>0</Dz>
 </Line>
 <Line>
-<Id>1791000000226</Id>
+<Id>1791000000232</Id>
 <Name><![CDATA[spur2]]></Name>
 <X>330</X><Y>280</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5491,7 +5734,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[cDoubled]]></VisibleCode>
 </Line>
 <Text>
-<Id>1791000000227</Id>
+<Id>1791000000233</Id>
 <Name><![CDATA[spurLbl]]></Name>
 <X>420</X><Y>286</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5512,7 +5755,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000228</Id>
+<Id>1791000000234</Id>
 <Name><![CDATA[spurLbl2]]></Name>
 <X>420</X><Y>302</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5533,7 +5776,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000229</Id>
+<Id>1791000000235</Id>
 <Name><![CDATA[spurDbl]]></Name>
 <X>420</X><Y>318</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5555,7 +5798,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000230</Id>
+<Id>1791000000236</Id>
 <Name><![CDATA[taeBox]]></Name>
 <X>860</X><Y>150</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5577,7 +5820,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000231</Id>
+<Id>1791000000237</Id>
 <Name><![CDATA[taeName]]></Name>
 <X>862</X><Y>130</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5598,7 +5841,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000232</Id>
+<Id>1791000000238</Id>
 <Name><![CDATA[taeNote]]></Name>
 <X>862</X><Y>236</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5619,7 +5862,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Line>
-<Id>1791000000233</Id>
+<Id>1791000000239</Id>
 <Name><![CDATA[taeLoop0]]></Name>
 <X>865</X><Y>182</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5644,7 +5887,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[0 < cTaeLoops]]></VisibleCode>
 </Line>
 <Line>
-<Id>1791000000234</Id>
+<Id>1791000000240</Id>
 <Name><![CDATA[taeLoop1]]></Name>
 <X>865</X><Y>204</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5669,7 +5912,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[1 < cTaeLoops]]></VisibleCode>
 </Line>
 <Line>
-<Id>1791000000235</Id>
+<Id>1791000000241</Id>
 <Name><![CDATA[taeLoop2]]></Name>
 <X>865</X><Y>226</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5694,7 +5937,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[2 < cTaeLoops]]></VisibleCode>
 </Line>
 <Line>
-<Id>1791000000236</Id>
+<Id>1791000000242</Id>
 <Name><![CDATA[taeLoop3]]></Name>
 <X>865</X><Y>248</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5719,7 +5962,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <VisibleCode><![CDATA[3 < cTaeLoops]]></VisibleCode>
 </Line>
 <Line>
-<Id>1791000000237</Id>
+<Id>1791000000243</Id>
 <Name><![CDATA[dnTrack]]></Name>
 <X>985</X><Y>60</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5743,7 +5986,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Dz>0</Dz>
 </Line>
 <Line>
-<Id>1791000000238</Id>
+<Id>1791000000244</Id>
 <Name><![CDATA[upTrack]]></Name>
 <X>1015</X><Y>60</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -5767,7 +6010,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Dz>0</Dz>
 </Line>
 <Text>
-<Id>1791000000239</Id>
+<Id>1791000000245</Id>
 <Name><![CDATA[toWardha]]></Name>
 <X>930</X><Y>44</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5788,7 +6031,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000240</Id>
+<Id>1791000000246</Id>
 <Name><![CDATA[toBpq]]></Name>
 <X>935</X><Y>905</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5809,7 +6052,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000241</Id>
+<Id>1791000000247</Id>
 <Name><![CDATA[dnLbl]]></Name>
 <X>952</X><Y>420</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5830,7 +6073,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000242</Id>
+<Id>1791000000248</Id>
 <Name><![CDATA[upLbl]]></Name>
 <X>1020</X><Y>420</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5851,7 +6094,7 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000243</Id>
+<Id>1791000000249</Id>
 <Name><![CDATA[mainLbl]]></Name>
 <X>1022</X><Y>440</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -5875,7 +6118,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Oval>
-<Id>1791000000244</Id>
+<Id>1791000000250</Id>
 <Name><![CDATA[paxDn0]]></Name>
 <X>985</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -5900,7 +6143,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(0, true) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000245</Id>
+<Id>1791000000251</Id>
 <Name><![CDATA[paxUp0]]></Name>
 <X>1015</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -5925,7 +6168,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(0, false) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000246</Id>
+<Id>1791000000252</Id>
 <Name><![CDATA[paxDn1]]></Name>
 <X>985</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -5950,7 +6193,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(1, true) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000247</Id>
+<Id>1791000000253</Id>
 <Name><![CDATA[paxUp1]]></Name>
 <X>1015</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -5975,7 +6218,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(1, false) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000248</Id>
+<Id>1791000000254</Id>
 <Name><![CDATA[paxDn2]]></Name>
 <X>985</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6000,7 +6243,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(2, true) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000249</Id>
+<Id>1791000000255</Id>
 <Name><![CDATA[paxUp2]]></Name>
 <X>1015</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6025,7 +6268,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(2, false) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000250</Id>
+<Id>1791000000256</Id>
 <Name><![CDATA[paxDn3]]></Name>
 <X>985</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6050,7 +6293,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(3, true) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000251</Id>
+<Id>1791000000257</Id>
 <Name><![CDATA[paxUp3]]></Name>
 <X>1015</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6075,7 +6318,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(3, false) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000252</Id>
+<Id>1791000000258</Id>
 <Name><![CDATA[paxDn4]]></Name>
 <X>985</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6100,7 +6343,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(4, true) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000253</Id>
+<Id>1791000000259</Id>
 <Name><![CDATA[paxUp4]]></Name>
 <X>1015</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6125,7 +6368,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(4, false) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000254</Id>
+<Id>1791000000260</Id>
 <Name><![CDATA[paxDn5]]></Name>
 <X>985</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6150,7 +6393,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(5, true) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000255</Id>
+<Id>1791000000261</Id>
 <Name><![CDATA[paxUp5]]></Name>
 <X>1015</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6175,7 +6418,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(5, false) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000256</Id>
+<Id>1791000000262</Id>
 <Name><![CDATA[paxDn6]]></Name>
 <X>985</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6200,7 +6443,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(6, true) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000257</Id>
+<Id>1791000000263</Id>
 <Name><![CDATA[paxUp6]]></Name>
 <X>1015</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6225,7 +6468,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(6, false) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000258</Id>
+<Id>1791000000264</Id>
 <Name><![CDATA[paxDn7]]></Name>
 <X>985</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6250,7 +6493,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(7, true) > -500]]></VisibleCode>
 </Oval>
 <Oval>
-<Id>1791000000259</Id>
+<Id>1791000000265</Id>
 <Name><![CDATA[paxUp7]]></Name>
 <X>1015</X><Y>0</Y>
 <Label><X>0</X><Y>0</Y></Label>
@@ -6275,7 +6518,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[paxY(7, false) > -500]]></VisibleCode>
 </Oval>
 <Text>
-<Id>1791000000260</Id>
+<Id>1791000000266</Id>
 <Name><![CDATA[cdName]]></Name>
 <X>1030</X><Y>585</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6296,7 +6539,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000261</Id>
+<Id>1791000000267</Id>
 <Name><![CDATA[cstpsBox]]></Name>
 <X>1070</X><Y>540</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6318,7 +6561,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000262</Id>
+<Id>1791000000268</Id>
 <Name><![CDATA[cstpsName]]></Name>
 <X>1080</X><Y>548</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6339,7 +6582,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000263</Id>
+<Id>1791000000269</Id>
 <Name><![CDATA[tippler0]]></Name>
 <X>1088</X><Y>694</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6362,7 +6605,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillColorCode><![CDATA[tipplerColor(0)]]></FillColorCode>
 </Rectangle>
 <Text>
-<Id>1791000000264</Id>
+<Id>1791000000270</Id>
 <Name><![CDATA[tipplerLbl0]]></Name>
 <X>1092</X><Y>736</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6383,7 +6626,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000265</Id>
+<Id>1791000000271</Id>
 <Name><![CDATA[tippler1]]></Name>
 <X>1140</X><Y>694</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6406,7 +6649,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillColorCode><![CDATA[tipplerColor(1)]]></FillColorCode>
 </Rectangle>
 <Text>
-<Id>1791000000266</Id>
+<Id>1791000000272</Id>
 <Name><![CDATA[tipplerLbl1]]></Name>
 <X>1144</X><Y>736</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6427,7 +6670,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000267</Id>
+<Id>1791000000273</Id>
 <Name><![CDATA[tippler2]]></Name>
 <X>1192</X><Y>694</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6450,7 +6693,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillColorCode><![CDATA[tipplerColor(2)]]></FillColorCode>
 </Rectangle>
 <Text>
-<Id>1791000000268</Id>
+<Id>1791000000274</Id>
 <Name><![CDATA[tipplerLbl2]]></Name>
 <X>1196</X><Y>736</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6471,7 +6714,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000269</Id>
+<Id>1791000000275</Id>
 <Name><![CDATA[tippler3]]></Name>
 <X>1244</X><Y>694</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6494,7 +6737,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillColorCode><![CDATA[tipplerColor(3)]]></FillColorCode>
 </Rectangle>
 <Text>
-<Id>1791000000270</Id>
+<Id>1791000000276</Id>
 <Name><![CDATA[tipplerLbl3]]></Name>
 <X>1248</X><Y>736</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6515,7 +6758,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000271</Id>
+<Id>1791000000277</Id>
 <Name><![CDATA[tippler4]]></Name>
 <X>1296</X><Y>694</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6538,7 +6781,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillColorCode><![CDATA[tipplerColor(4)]]></FillColorCode>
 </Rectangle>
 <Text>
-<Id>1791000000272</Id>
+<Id>1791000000278</Id>
 <Name><![CDATA[tipplerLbl4]]></Name>
 <X>1300</X><Y>736</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6559,7 +6802,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000273</Id>
+<Id>1791000000279</Id>
 <Name><![CDATA[bpqBox]]></Name>
 <X>1070</X><Y>840</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6581,7 +6824,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000274</Id>
+<Id>1791000000280</Id>
 <Name><![CDATA[bpqName]]></Name>
 <X>1080</X><Y>846</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6602,7 +6845,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000275</Id>
+<Id>1791000000281</Id>
 <Name><![CDATA[rake0]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6630,7 +6873,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[0 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000276</Id>
+<Id>1791000000282</Id>
 <Name><![CDATA[rakeLbl0]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6655,7 +6898,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000277</Id>
+<Id>1791000000283</Id>
 <Name><![CDATA[rakeLblV0]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6680,7 +6923,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000278</Id>
+<Id>1791000000284</Id>
 <Name><![CDATA[rake1]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6708,7 +6951,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[1 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000279</Id>
+<Id>1791000000285</Id>
 <Name><![CDATA[rakeLbl1]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6733,7 +6976,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000280</Id>
+<Id>1791000000286</Id>
 <Name><![CDATA[rakeLblV1]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6758,7 +7001,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000281</Id>
+<Id>1791000000287</Id>
 <Name><![CDATA[rake2]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6786,7 +7029,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[2 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000282</Id>
+<Id>1791000000288</Id>
 <Name><![CDATA[rakeLbl2]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6811,7 +7054,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000283</Id>
+<Id>1791000000289</Id>
 <Name><![CDATA[rakeLblV2]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6836,7 +7079,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000284</Id>
+<Id>1791000000290</Id>
 <Name><![CDATA[rake3]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6864,7 +7107,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[3 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000285</Id>
+<Id>1791000000291</Id>
 <Name><![CDATA[rakeLbl3]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6889,7 +7132,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000286</Id>
+<Id>1791000000292</Id>
 <Name><![CDATA[rakeLblV3]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6914,7 +7157,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000287</Id>
+<Id>1791000000293</Id>
 <Name><![CDATA[rake4]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -6942,7 +7185,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[4 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000288</Id>
+<Id>1791000000294</Id>
 <Name><![CDATA[rakeLbl4]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6967,7 +7210,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000289</Id>
+<Id>1791000000295</Id>
 <Name><![CDATA[rakeLblV4]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -6992,7 +7235,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000290</Id>
+<Id>1791000000296</Id>
 <Name><![CDATA[rake5]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7020,7 +7263,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[5 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000291</Id>
+<Id>1791000000297</Id>
 <Name><![CDATA[rakeLbl5]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7045,7 +7288,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000292</Id>
+<Id>1791000000298</Id>
 <Name><![CDATA[rakeLblV5]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7070,7 +7313,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000293</Id>
+<Id>1791000000299</Id>
 <Name><![CDATA[rake6]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7098,7 +7341,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[6 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000294</Id>
+<Id>1791000000300</Id>
 <Name><![CDATA[rakeLbl6]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7123,7 +7366,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000295</Id>
+<Id>1791000000301</Id>
 <Name><![CDATA[rakeLblV6]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7148,7 +7391,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000296</Id>
+<Id>1791000000302</Id>
 <Name><![CDATA[rake7]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7176,7 +7419,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[7 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000297</Id>
+<Id>1791000000303</Id>
 <Name><![CDATA[rakeLbl7]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7201,7 +7444,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000298</Id>
+<Id>1791000000304</Id>
 <Name><![CDATA[rakeLblV7]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7226,7 +7469,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000299</Id>
+<Id>1791000000305</Id>
 <Name><![CDATA[rake8]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7254,7 +7497,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[8 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000300</Id>
+<Id>1791000000306</Id>
 <Name><![CDATA[rakeLbl8]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7279,7 +7522,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000301</Id>
+<Id>1791000000307</Id>
 <Name><![CDATA[rakeLblV8]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7304,7 +7547,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000302</Id>
+<Id>1791000000308</Id>
 <Name><![CDATA[rake9]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7332,7 +7575,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[9 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000303</Id>
+<Id>1791000000309</Id>
 <Name><![CDATA[rakeLbl9]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7357,7 +7600,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000304</Id>
+<Id>1791000000310</Id>
 <Name><![CDATA[rakeLblV9]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7382,7 +7625,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000305</Id>
+<Id>1791000000311</Id>
 <Name><![CDATA[rake10]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7410,7 +7653,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[10 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000306</Id>
+<Id>1791000000312</Id>
 <Name><![CDATA[rakeLbl10]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7435,7 +7678,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000307</Id>
+<Id>1791000000313</Id>
 <Name><![CDATA[rakeLblV10]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7460,7 +7703,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000308</Id>
+<Id>1791000000314</Id>
 <Name><![CDATA[rake11]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7488,7 +7731,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[11 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000309</Id>
+<Id>1791000000315</Id>
 <Name><![CDATA[rakeLbl11]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7513,7 +7756,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000310</Id>
+<Id>1791000000316</Id>
 <Name><![CDATA[rakeLblV11]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7538,7 +7781,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000311</Id>
+<Id>1791000000317</Id>
 <Name><![CDATA[rake12]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7566,7 +7809,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[12 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000312</Id>
+<Id>1791000000318</Id>
 <Name><![CDATA[rakeLbl12]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7591,7 +7834,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000313</Id>
+<Id>1791000000319</Id>
 <Name><![CDATA[rakeLblV12]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7616,7 +7859,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000314</Id>
+<Id>1791000000320</Id>
 <Name><![CDATA[rake13]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7644,7 +7887,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[13 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000315</Id>
+<Id>1791000000321</Id>
 <Name><![CDATA[rakeLbl13]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7669,7 +7912,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000316</Id>
+<Id>1791000000322</Id>
 <Name><![CDATA[rakeLblV13]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7694,7 +7937,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000317</Id>
+<Id>1791000000323</Id>
 <Name><![CDATA[rake14]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7722,7 +7965,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[14 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000318</Id>
+<Id>1791000000324</Id>
 <Name><![CDATA[rakeLbl14]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7747,7 +7990,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000319</Id>
+<Id>1791000000325</Id>
 <Name><![CDATA[rakeLblV14]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7772,7 +8015,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000320</Id>
+<Id>1791000000326</Id>
 <Name><![CDATA[rake15]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7800,7 +8043,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <VisibleCode><![CDATA[15 < rakes.size()]]></VisibleCode>
 </Rectangle>
 <Text>
-<Id>1791000000321</Id>
+<Id>1791000000327</Id>
 <Name><![CDATA[rakeLbl15]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7825,7 +8068,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000322</Id>
+<Id>1791000000328</Id>
 <Name><![CDATA[rakeLblV15]]></Name>
 <X>0</X><Y>0</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7850,7 +8093,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000323</Id>
+<Id>1791000000329</Id>
 <Name><![CDATA[legendBox]]></Name>
 <X>40</X><Y>100</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7872,7 +8115,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000324</Id>
+<Id>1791000000330</Id>
 <Name><![CDATA[legendT]]></Name>
 <X>50</X><Y>106</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7893,7 +8136,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000325</Id>
+<Id>1791000000331</Id>
 <Name><![CDATA[lg0]]></Name>
 <X>50</X><Y>126</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7915,7 +8158,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000326</Id>
+<Id>1791000000332</Id>
 <Name><![CDATA[lgt0]]></Name>
 <X>76</X><Y>135</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7936,7 +8179,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000327</Id>
+<Id>1791000000333</Id>
 <Name><![CDATA[lg1]]></Name>
 <X>50</X><Y>139</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -7958,7 +8201,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000328</Id>
+<Id>1791000000334</Id>
 <Name><![CDATA[lgt1]]></Name>
 <X>76</X><Y>148</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -7979,7 +8222,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000329</Id>
+<Id>1791000000335</Id>
 <Name><![CDATA[lg2]]></Name>
 <X>50</X><Y>152</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -8001,7 +8244,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000330</Id>
+<Id>1791000000336</Id>
 <Name><![CDATA[lgt2]]></Name>
 <X>76</X><Y>161</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8022,7 +8265,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000331</Id>
+<Id>1791000000337</Id>
 <Name><![CDATA[lg3]]></Name>
 <X>50</X><Y>165</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -8044,7 +8287,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000332</Id>
+<Id>1791000000338</Id>
 <Name><![CDATA[lgt3]]></Name>
 <X>76</X><Y>174</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8065,7 +8308,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000333</Id>
+<Id>1791000000339</Id>
 <Name><![CDATA[lg4]]></Name>
 <X>50</X><Y>178</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -8087,7 +8330,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000334</Id>
+<Id>1791000000340</Id>
 <Name><![CDATA[lgt4]]></Name>
 <X>76</X><Y>187</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8108,7 +8351,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000335</Id>
+<Id>1791000000341</Id>
 <Name><![CDATA[lg5]]></Name>
 <X>50</X><Y>191</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -8130,7 +8373,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000336</Id>
+<Id>1791000000342</Id>
 <Name><![CDATA[lgt5]]></Name>
 <X>76</X><Y>200</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8151,7 +8394,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000337</Id>
+<Id>1791000000343</Id>
 <Name><![CDATA[boardBox]]></Name>
 <X>1100</X><Y>56</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -8173,7 +8416,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000338</Id>
+<Id>1791000000344</Id>
 <Name><![CDATA[board]]></Name>
 <X>1108</X><Y>64</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8195,7 +8438,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000339</Id>
+<Id>1791000000345</Id>
 <Name><![CDATA[kpiBox]]></Name>
 <X>20</X><Y>560</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -8217,7 +8460,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000340</Id>
+<Id>1791000000346</Id>
 <Name><![CDATA[kpiT]]></Name>
 <X>30</X><Y>566</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8238,7 +8481,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000341</Id>
+<Id>1791000000347</Id>
 <Name><![CDATA[kpi]]></Name>
 <X>30</X><Y>586</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8260,7 +8503,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Rectangle>
-<Id>1791000000342</Id>
+<Id>1791000000348</Id>
 <Name><![CDATA[decBox]]></Name>
 <X>500</X><Y>400</Y>
 <Label><X>10</X><Y>0</Y></Label>
@@ -8282,7 +8525,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <FillMaterial>null</FillMaterial>
 </Rectangle>
 <Text>
-<Id>1791000000343</Id>
+<Id>1791000000349</Id>
 <Name><![CDATA[dec]]></Name>
 <X>510</X><Y>408</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8304,7 +8547,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <TimePlot>
-<Id>1791000000344</Id>
+<Id>1791000000350</Id>
 <Name><![CDATA[plotStock]]></Name>
 <X>20</X><Y>780</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8316,7 +8559,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Z>0</Z>
 <AutoUpdate>true</AutoUpdate>
 <RecurrenceProperties>
-<Id>1791000000345</Id>
+<Id>1791000000351</Id>
 <OccurrenceAtTime>true</OccurrenceAtTime>
 <OccurrenceDate>1791138600000</OccurrenceDate>
 <OccurrenceTime Class="CodeUnitValue">
@@ -8362,7 +8605,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Interpolation>LINEAR</Interpolation>
 <DatasetExpression>
 <Title><![CDATA[CSTPS coal stock (days of normative 47.8 kt/day)]]></Title>
-<Id>1791000000346</Id>
+<Id>1791000000352</Id>
 <Expression><![CDATA[dsStockDays]]></Expression>
 <Color>-14714956</Color>
 <Expression2><![CDATA[stockDays()]]></Expression2>
@@ -8372,7 +8615,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </DatasetExpression>
 <DatasetExpression>
 <Title><![CDATA[7-day critical level]]></Title>
-<Id>1791000000347</Id>
+<Id>1791000000353</Id>
 <Expression><![CDATA[dsStockCritical]]></Expression>
 <Color>-2742488</Color>
 <Expression2><![CDATA[7]]></Expression2>
@@ -8386,7 +8629,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <LabelFormat>MODEL_TIME_UNITS</LabelFormat>
 </TimePlot>
 <TimePlot>
-<Id>1791000000348</Id>
+<Id>1791000000354</Id>
 <Name><![CDATA[plotRakes]]></Name>
 <X>500</X><Y>780</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8398,7 +8641,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Z>0</Z>
 <AutoUpdate>true</AutoUpdate>
 <RecurrenceProperties>
-<Id>1791000000349</Id>
+<Id>1791000000355</Id>
 <OccurrenceAtTime>true</OccurrenceAtTime>
 <OccurrenceDate>1791138600000</OccurrenceDate>
 <OccurrenceTime Class="CodeUnitValue">
@@ -8444,7 +8687,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Interpolation>LINEAR</Interpolation>
 <DatasetExpression>
 <Title><![CDATA[Loaded rakes placed at CSTPS, last 24 h]]></Title>
-<Id>1791000000350</Id>
+<Id>1791000000356</Id>
 <Expression><![CDATA[dsRakes24]]></Expression>
 <Color>-13852628</Color>
 <Expression2><![CDATA[deliveredLast24h()]]></Expression2>
@@ -8454,7 +8697,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </DatasetExpression>
 <DatasetExpression>
 <Title><![CDATA[Validation band low (6/day, CEA)]]></Title>
-<Id>1791000000351</Id>
+<Id>1791000000357</Id>
 <Expression><![CDATA[dsBandLo]]></Expression>
 <Color>-8421505</Color>
 <Expression2><![CDATA[6]]></Expression2>
@@ -8464,7 +8707,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </DatasetExpression>
 <DatasetExpression>
 <Title><![CDATA[LD-01 Ghugus loading 7.5/day]]></Title>
-<Id>1791000000352</Id>
+<Id>1791000000358</Id>
 <Expression><![CDATA[dsLd01]]></Expression>
 <Color>-33010</Color>
 <Expression2><![CDATA[7.5]]></Expression2>
@@ -8478,7 +8721,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <LabelFormat>MODEL_TIME_UNITS</LabelFormat>
 </TimePlot>
 <BarChart>
-<Id>1791000000353</Id>
+<Id>1791000000359</Id>
 <Name><![CDATA[chartDecomp]]></Name>
 <X>980</X><Y>940</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8490,7 +8733,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Z>0</Z>
 <AutoUpdate>true</AutoUpdate>
 <RecurrenceProperties>
-<Id>1791000000354</Id>
+<Id>1791000000360</Id>
 <OccurrenceAtTime>true</OccurrenceAtTime>
 <OccurrenceDate>1791138600000</OccurrenceDate>
 <OccurrenceTime Class="CodeUnitValue">
@@ -8528,55 +8771,55 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </Labels>
 <ShowLegend>true</ShowLegend>
 <DataItem>
-<Id>1791000000355</Id>
+<Id>1791000000361</Id>
 <Expression><![CDATA[groupMean(0)]]></Expression>
 <Color>-14714956</Color>
 <Title><![CDATA[Ghugus terminal]]></Title>
 </DataItem>
 <DataItem>
-<Id>1791000000356</Id>
+<Id>1791000000362</Id>
 <Expression><![CDATA[groupMean(1)]]></Expression>
 <Color>-33010</Color>
 <Title><![CDATA[Crew waits]]></Title>
 </DataItem>
 <DataItem>
-<Id>1791000000357</Id>
+<Id>1791000000363</Id>
 <Expression><![CDATA[groupMean(2)]]></Expression>
 <Color>-13852628</Color>
 <Title><![CDATA[Single-line waits]]></Title>
 </DataItem>
 <DataItem>
-<Id>1791000000358</Id>
+<Id>1791000000364</Id>
 <Expression><![CDATA[groupMean(3)]]></Expression>
 <Color>-2742488</Color>
 <Title><![CDATA[Running]]></Title>
 </DataItem>
 <DataItem>
-<Id>1791000000359</Id>
+<Id>1791000000365</Id>
 <Expression><![CDATA[groupMean(4)]]></Expression>
 <Color>-7051331</Color>
 <Title><![CDATA[Tadali DN merge]]></Title>
 </DataItem>
 <DataItem>
-<Id>1791000000360</Id>
+<Id>1791000000366</Id>
 <Expression><![CDATA[groupMean(5)]]></Expression>
 <Color>-7580085</Color>
 <Title><![CDATA[CSTPS terminal]]></Title>
 </DataItem>
 <DataItem>
-<Id>1791000000361</Id>
+<Id>1791000000367</Id>
 <Expression><![CDATA[groupMean(6)]]></Expression>
 <Color>-1869886</Color>
 <Title><![CDATA[Held at CD (loops/UP path)]]></Title>
 </DataItem>
 <DataItem>
-<Id>1791000000362</Id>
+<Id>1791000000368</Id>
 <Expression><![CDATA[groupMean(7)]]></Expression>
 <Color>-8421505</Color>
 <Title><![CDATA[Crew relief]]></Title>
 </DataItem>
 <DataItem>
-<Id>1791000000363</Id>
+<Id>1791000000369</Id>
 <Expression><![CDATA[groupMean(8)]]></Expression>
 <Color>-4408030</Color>
 <Title><![CDATA[BPC detour]]></Title>
@@ -8590,7 +8833,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </Bars>
 </BarChart>
 <Text>
-<Id>1791000000364</Id>
+<Id>1791000000370</Id>
 <Name><![CDATA[decompTitle]]></Name>
 <X>990</X><Y>924</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8611,7 +8854,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000365</Id>
+<Id>1791000000371</Id>
 <Name><![CDATA[pg_0]]></Name>
 <X>1600</X><Y>54</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8632,7 +8875,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000366</Id>
+<Id>1791000000372</Id>
 <Name><![CDATA[pg_489]]></Name>
 <X>1600</X><Y>216</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8653,7 +8896,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000367</Id>
+<Id>1791000000373</Id>
 <Name><![CDATA[pg_990]]></Name>
 <X>1600</X><Y>620</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8674,9 +8917,9 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000368</Id>
+<Id>1791000000374</Id>
 <Name><![CDATA[pg_1493]]></Name>
-<X>1600</X><Y>980</Y>
+<X>1600</X><Y>1024</Y>
 <Label><X>0</X><Y>-10</Y></Label>
 <PublicFlag>true</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -8695,8 +8938,8 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000369</Id>
-<Name><![CDATA[pg_1998]]></Name>
+<Id>1791000000375</Id>
+<Name><![CDATA[pg_1999]]></Name>
 <X>1930</X><Y>54</Y>
 <Label><X>0</X><Y>-10</Y></Label>
 <PublicFlag>true</PublicFlag>
@@ -8716,9 +8959,9 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000370</Id>
-<Name><![CDATA[pg_2493]]></Name>
-<X>1930</X><Y>546</Y>
+<Id>1791000000376</Id>
+<Name><![CDATA[pg_2494]]></Name>
+<X>1930</X><Y>568</Y>
 <Label><X>0</X><Y>-10</Y></Label>
 <PublicFlag>true</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -8737,9 +8980,9 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000371</Id>
-<Name><![CDATA[pg_2988]]></Name>
-<X>1930</X><Y>884</Y>
+<Id>1791000000377</Id>
+<Name><![CDATA[pg_2989]]></Name>
+<X>1930</X><Y>906</Y>
 <Label><X>0</X><Y>-10</Y></Label>
 <PublicFlag>true</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
@@ -8758,7 +9001,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000372</Id>
+<Id>1791000000378</Id>
 <Name><![CDATA[paramsTitle]]></Name>
 <X>1600</X><Y>20</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8779,7 +9022,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000373</Id>
+<Id>1791000000379</Id>
 <Name><![CDATA[fnTitle]]></Name>
 <X>2400</X><Y>30</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8812,12 +9055,12 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <RelativeAccuracy>1.0E-5</RelativeAccuracy>
 <TimeAccuracy>1.0E-5</TimeAccuracy>
 <Frame>
-<Id>1791000000474</Id>
+<Id>1791000000487</Id>
 <Width>1500</Width>
 <Height>950</Height>
 </Frame>
 <Database>
-<Id>1791000000475</Id>
+<Id>1791000000488</Id>
 <Logging>false</Logging>
 <AutoExport>false</AutoExport>
 <ShutdownCompact>false</ShutdownCompact>
@@ -8827,7 +9070,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </ExportSettings>
 </Database>
 <RunConfiguration ActiveObjectClassId="1791000000001">
-<Id>1791000000476</Id>
+<Id>1791000000489</Id>
 <Name><![CDATA[RunConfiguration]]></Name>
 <MaximumMemory>1024</MaximumMemory>
 <ModelTimeProperties>
@@ -8852,7 +9095,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </RunConfiguration>
 <Experiments>
 <SimulationExperiment ActiveObjectClassId="1791000000001">
-<Id>1791000000460</Id>
+<Id>1791000000473</Id>
 <Name><![CDATA[Simulation]]></Name>
 <CommandLineArguments><![CDATA[]]></CommandLineArguments>
 <MaximumMemory>1024</MaximumMemory>
@@ -8906,13 +9149,13 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <BypassInitialScreen>true</BypassInitialScreen>
 </SimulationExperiment>
 <ParamVariationExperiment ActiveObjectClassId="1791000000001">
-<Id>1791000000464</Id>
+<Id>1791000000477</Id>
 <Name><![CDATA[Replications30]]></Name>
 <AdditionalClassCode><![CDATA[static final String KEY_NAME = "phase";
 // Collected KPI rows, grouped by the value of the varied parameter shown in the summary.
 java.util.TreeMap<Integer, java.util.ArrayList<double[]>> byKey = new java.util.TreeMap<Integer, java.util.ArrayList<double[]>>();
-static final String[] KPI = { "rakes/day", "cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
-                              "relief share", "BPC share", "stock min days" };
+static final String[] KPI = { "rakes/day", "cycle h", "P90 cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
+                              "relief share", "BPC share", "stock min days", "merge queue", "expiries/100", "exam h/rake/mo" };
 
 double tCrit(int df) {
     final double[] t = { 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145,
@@ -8921,8 +9164,8 @@ double tCrit(int df) {
 }
 
 void collect(int key, Main m) {
-    double[] r = { m.rakesPerDay(), m.meanCycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
-                   m.shareRelief(), m.shareBpc(), m.stockMinDays };
+    double[] r = { m.rakesPerDay(), m.meanCycle(), m.p90Cycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
+                   m.shareRelief(), m.shareBpc(), m.stockMinDays, m.mergeQueueAvg(), m.crewExpiriesPer100(), m.examHoursPerRakeMonth() };
     if (!byKey.containsKey(key)) byKey.put(key, new java.util.ArrayList<double[]>());
     byKey.get(key).add(r);
 }
@@ -8973,7 +9216,7 @@ save("RakeFlow_replications_summary.txt");]]></AfterSimulationRunCode>
 <LoadRootFromSnapshot>false</LoadRootFromSnapshot>
 <Presentation>
 <Text>
-<Id>1791000000461</Id>
+<Id>1791000000474</Id>
 <Name><![CDATA[expTitle]]></Name>
 <X>20</X><Y>20</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -8994,7 +9237,7 @@ save("RakeFlow_replications_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000462</Id>
+<Id>1791000000475</Id>
 <Name><![CDATA[expNote]]></Name>
 <X>20</X><Y>46</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9015,7 +9258,7 @@ save("RakeFlow_replications_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000463</Id>
+<Id>1791000000476</Id>
 <Name><![CDATA[expSummary]]></Name>
 <X>20</X><Y>80</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9078,13 +9321,13 @@ save("RakeFlow_replications_summary.txt");]]></AfterSimulationRunCode>
 </ReplicationsProperties>
 </ParamVariationExperiment>
 <ParamVariationExperiment ActiveObjectClassId="1791000000001">
-<Id>1791000000468</Id>
+<Id>1791000000481</Id>
 <Name><![CDATA[E1_FleetSize]]></Name>
 <AdditionalClassCode><![CDATA[static final String KEY_NAME = "fleet";
 // Collected KPI rows, grouped by the value of the varied parameter shown in the summary.
 java.util.TreeMap<Integer, java.util.ArrayList<double[]>> byKey = new java.util.TreeMap<Integer, java.util.ArrayList<double[]>>();
-static final String[] KPI = { "rakes/day", "cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
-                              "relief share", "BPC share", "stock min days" };
+static final String[] KPI = { "rakes/day", "cycle h", "P90 cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
+                              "relief share", "BPC share", "stock min days", "merge queue", "expiries/100", "exam h/rake/mo" };
 
 double tCrit(int df) {
     final double[] t = { 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145,
@@ -9093,8 +9336,8 @@ double tCrit(int df) {
 }
 
 void collect(int key, Main m) {
-    double[] r = { m.rakesPerDay(), m.meanCycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
-                   m.shareRelief(), m.shareBpc(), m.stockMinDays };
+    double[] r = { m.rakesPerDay(), m.meanCycle(), m.p90Cycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
+                   m.shareRelief(), m.shareBpc(), m.stockMinDays, m.mergeQueueAvg(), m.crewExpiriesPer100(), m.examHoursPerRakeMonth() };
     if (!byKey.containsKey(key)) byKey.put(key, new java.util.ArrayList<double[]>());
     byKey.get(key).add(r);
 }
@@ -9145,7 +9388,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 <LoadRootFromSnapshot>false</LoadRootFromSnapshot>
 <Presentation>
 <Text>
-<Id>1791000000465</Id>
+<Id>1791000000478</Id>
 <Name><![CDATA[expTitle]]></Name>
 <X>20</X><Y>20</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9157,7 +9400,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 <Z>0</Z>
 <Rotation>0.0</Rotation>
 <Color>-15124626</Color>
-<Text><![CDATA[E1 fleet size 4-14 rakes x 10 seeds (common random numbers)]]></Text>
+<Text><![CDATA[E1 fleet size 4-20 rakes x 10 seeds (common random numbers)]]></Text>
 <Font>
 <Name>SansSerif</Name>
 <Size>16</Size>
@@ -9166,7 +9409,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000466</Id>
+<Id>1791000000479</Id>
 <Name><![CDATA[expNote]]></Name>
 <X>20</X><Y>46</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9187,7 +9430,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000467</Id>
+<Id>1791000000480</Id>
 <Name><![CDATA[expSummary]]></Name>
 <X>20</X><Y>80</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9219,7 +9462,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 <Code><![CDATA[4]]></Code>
 </From>
 <To Class="CodeValue">
-<Code><![CDATA[14]]></Code>
+<Code><![CDATA[20]]></Code>
 </To>
 <Step Class="CodeValue">
 <Code><![CDATA[2]]></Code>
@@ -9263,13 +9506,13 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 </ReplicationsProperties>
 </ParamVariationExperiment>
 <ParamVariationExperiment ActiveObjectClassId="1791000000001">
-<Id>1791000000472</Id>
+<Id>1791000000485</Id>
 <Name><![CDATA[E2toE7_Scenarios]]></Name>
 <AdditionalClassCode><![CDATA[static final String KEY_NAME = "scenario";
 // Collected KPI rows, grouped by the value of the varied parameter shown in the summary.
 java.util.TreeMap<Integer, java.util.ArrayList<double[]>> byKey = new java.util.TreeMap<Integer, java.util.ArrayList<double[]>>();
-static final String[] KPI = { "rakes/day", "cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
-                              "relief share", "BPC share", "stock min days" };
+static final String[] KPI = { "rakes/day", "cycle h", "P90 cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
+                              "relief share", "BPC share", "stock min days", "merge queue", "expiries/100", "exam h/rake/mo" };
 
 double tCrit(int df) {
     final double[] t = { 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145,
@@ -9278,8 +9521,8 @@ double tCrit(int df) {
 }
 
 void collect(int key, Main m) {
-    double[] r = { m.rakesPerDay(), m.meanCycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
-                   m.shareRelief(), m.shareBpc(), m.stockMinDays };
+    double[] r = { m.rakesPerDay(), m.meanCycle(), m.p90Cycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
+                   m.shareRelief(), m.shareBpc(), m.stockMinDays, m.mergeQueueAvg(), m.crewExpiriesPer100(), m.examHoursPerRakeMonth() };
     if (!byKey.containsKey(key)) byKey.put(key, new java.util.ArrayList<double[]>());
     byKey.get(key).add(r);
 }
@@ -9330,7 +9573,7 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <LoadRootFromSnapshot>false</LoadRootFromSnapshot>
 <Presentation>
 <Text>
-<Id>1791000000469</Id>
+<Id>1791000000482</Id>
 <Name><![CDATA[expTitle]]></Name>
 <X>20</X><Y>20</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9342,7 +9585,7 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <Z>0</Z>
 <Rotation>0.0</Rotation>
 <Color>-15124626</Color>
-<Text><![CDATA[Scenarios 0-11 (E2 RLS, E3 path policy, E4 lobby, E5 doubling, E6 tipplers, E7 +20%) x 10 seeds]]></Text>
+<Text><![CDATA[Scenarios 0-18 (E2 RLS, E3 path policy, E4 lobby, E5 doubling, E6 tipplers, E7 +20%, dispatch, crew timing, exam trigger) x 10 seeds]]></Text>
 <Font>
 <Name>SansSerif</Name>
 <Size>16</Size>
@@ -9351,7 +9594,7 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000470</Id>
+<Id>1791000000483</Id>
 <Name><![CDATA[expNote]]></Name>
 <X>20</X><Y>46</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9372,7 +9615,7 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000471</Id>
+<Id>1791000000484</Id>
 <Name><![CDATA[expSummary]]></Name>
 <X>20</X><Y>80</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9404,7 +9647,7 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <Code><![CDATA[0]]></Code>
 </From>
 <To Class="CodeValue">
-<Code><![CDATA[11]]></Code>
+<Code><![CDATA[18]]></Code>
 </To>
 <Step Class="CodeValue">
 <Code><![CDATA[1]]></Code>

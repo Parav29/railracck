@@ -53,13 +53,13 @@ bseed = {r["seed"]: float(r["rakesPerDay"]) for r in rows if r["args"] == "scena
 cases = []
 seen = set()
 for r in rows:
-    if r["experiment"] in ("E2-E7 levers (one at a time vs baseline)", "Assumption sensitivity", "Combinations to reach LD-01 (7-8 rakes/day)") and r["case"] != "baseline":
+    if r["experiment"] in ("E2-E7 levers (one at a time vs baseline)", "Proposal scenarios (submitted deck): dispatch, crew booking, exam trigger", "Assumption sensitivity", "Combinations to reach LD-01 (7-8 rakes/day)") and not r["case"].startswith("baseline"):
         seen.add((r["experiment"], r["case"], r["args"]))
 for e, c, a in seen:
     d = [float(r["rakesPerDay"]) - bseed[r["seed"]] for r in rows if r["args"] == a and r["experiment"] == e]
     cases.append((c, *mci(d), e))
 cases.sort(key=lambda x: x[1])
-fig, ax = plt.subplots(figsize=(9, 8.5))
+fig, ax = plt.subplots(figsize=(9, 11))
 y = range(len(cases))
 cols = [BLUE if abs(m) > h else GREY for _, m, h, _ in cases]
 ax.barh(list(y), [m for _, m, _, _ in cases], xerr=[h for _, _, h, _ in cases], color=cols, height=0.7, error_kw={"ecolor": MUTED, "lw": 1})
