@@ -11,3 +11,6 @@ model/RakeFlow/*_summary.txt
 .DS_Store
 # course handout (instructor's material, not ours)
 docs/IE305_Simulation_Project_Coal_Rake_Cycle.docx
+website/nginx.pid
+website/nginx-error.log
+website/tmp/
