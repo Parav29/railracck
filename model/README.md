@@ -26,6 +26,10 @@ model/
 4. Every run appends a KPI row to `model/RakeFlow/RakeFlow_runs.csv`; the Simulation run also writes
    `RAKE_cycle_log_sim.csv` in the column format of `data/templates/RAKE_cycle_log.csv`.
 
+Below the charts on Main (y 1320-1860) is a **PROCESS FLOW (live)** panel: the rake cycle drawn as a flowchart
+(QUEUE / DELAY / SEIZE / DECISION boxes, each labelled with the function that runs it), showing live how many rakes
+are in each stage and the mean hours per cycle. It is presentation only and does not change the logic.
+
 Change inputs in the Simulation experiment's Parameters (seed, modelPhase, scenario, fleetSize are listed there) or
 on Main's canvas (all 100 parameters, x >= 1600, grouped and described).
 

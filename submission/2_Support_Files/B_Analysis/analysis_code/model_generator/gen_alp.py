@@ -150,7 +150,7 @@ PALETTE = [color(*c) for c in [(31, 119, 180), (255, 127, 14), (44, 160, 44), (2
 
 def main_presentation():
     s = ""
-    s += rect("bg", 0, 0, 1500, 1260, fill=WHITE, line=None)
+    s += rect("bg", 0, 0, 1500, 1880, fill=WHITE, line=None)
     s += text("title", 20, 12, "RakeFlow  |  Ghugus (GGS) -> Tadali (TAE) -> Chandrapur TPS (CSTPS) closed-circuit coal rakes  |  Central Railway, Nagpur Division",
               size=17, bold=True, col=NAVY)
     s += text("clock", 20, 42, "-", size=12, bold=True, TextCode="headerText()")
@@ -251,6 +251,68 @@ def main_presentation():
                       ["Ghugus terminal", "Crew waits", "Single-line waits", "Running", "Tadali DN merge",
                        "CSTPS terminal", "Held at CD (loops/UP path)", "Crew relief", "BPC detour"])])
     s += text("decompTitle", 990, 924, "Mean hours per cycle by stage", size=12, bold=True, col=NAVY)
+    s += flow_panel()
+    return s
+
+
+# Process-flow panel: the rake cycle drawn as a flowchart (Queue / Delay / Seize / Decision boxes), each box bound
+# to the kernel stage it represents. Pure presentation: it reads flowCount/compMean and changes no logic.
+# (stage index or -1 decision / -2 end, kind 0 queue 1 delay 2 seize 3 decision/end, name, function)
+FLOW_TOP = [(0, 1, "Arrive + placement", "arriveGGS()"), (1, 0, "Wait for siding", "qSiding"),
+            (2, 2, "Loading (siding)", "startLoading()"), (3, 1, "Release -> ready", "loadDone()"),
+            (4, 0, "Wait for crew", "assignCrew()"), (5, 0, "Wait line + TAE loop", "allocLine()"),
+            (6, 2, "Single line GGS-TAE", "allocLine()"), (7, 0, "Wait gap at Tadali", "planMerge()"),
+            (8, 1, "Run Tadali-CSTPS", "mergeDN()"), (9, 1, "Placement at CSTPS", "arriveCSTPS()")]
+FLOW_BOTTOM = [(10, 0, "Wait for tippler", "qTippler"), (11, 2, "Unloading (tippler)", "startTippler()"),
+               (12, 1, "Release at CSTPS", "unloadDone()"), (-1, 3, "BPC exam due?", "releasedAtCD()"),
+               (14, 0, "Held at CD (loops)", "departCD()"), (13, 0, "Wait crew (empty)", "assignCrew()"),
+               (15, 1, "Run CSTPS-Tadali", "planDepartCD()"), (16, 0, "Wait single line", "qLineTAE"),
+               (17, 2, "Single line TAE-GGS", "allocLine()"), (-2, 3, "Cycle complete", "closeCycle()")]
+FLOW_SIDE = [(6, 19, 1, "BPC exam (depot)", "goBpc() / examWork()"), (2, 18, 0, "Crew relief (wait)", "relieve()")]
+KIND = ["QUEUE", "DELAY", "SEIZE", "DECISION"]
+KIND_COL = [color(170, 110, 0), color(30, 80, 170), color(30, 120, 40), color(90, 90, 90)]
+FX0, FDX, FW, FH = 25, 146, 132, 84
+FY = (1400, 1580, 1760)
+
+
+def flow_box(name, i, row_y, p, kind, label, fn):
+    x = FX0 + i * FDX
+    s = rect(f"{name}Box", x, row_y, FW, FH, fill=LIGHT, line=GREY, FillColorCode=f"flowColor({p}, {kind})")
+    s += text(f"{name}Kind", x + 6, row_y + 4, KIND[kind], size=9, bold=True, col=KIND_COL[kind])
+    s += text(f"{name}Name", x + 6, row_y + 19, label, size=10, bold=True, col=BLACK)
+    s += text(f"{name}Fn", x + 6, row_y + 36, fn, size=9, col=color(90, 90, 90), font="Monospaced")
+    s += text(f"{name}Live", x + 6, row_y + 56, "-", size=10, bold=True, col=NAVY, TextCode=f"flowText({p})")
+    return s
+
+
+def flow_panel():
+    s = rect("flowBg", 10, 1320, 1480, 540, fill=PANEL, line=GREY)
+    s += text("flowTitle", 25, 1330, "PROCESS FLOW (live)  -  the rake cycle as a flowchart, driven by the event logic",
+              size=15, bold=True, col=NAVY)
+    s += text("flowNote", 25, 1354, "Each box is one stage of the cycle: QUEUE = waiting for a resource, DELAY = timed "
+              "activity, SEIZE = holds a resource (siding, single line, tippler), DECISION = branch.  'now' = rakes in the "
+              "stage at this moment, 'avg' = mean hours per cycle.  Closed loop: 8 rakes, no sink.", size=10)
+    s += text("flowNote2", 25, 1370, "Controller: dispatch() re-checks every waiting rake after each event "
+              "(sidings, crews, single line, CSTPS departures, tipplers, exam line).", size=10, col=color(90, 90, 90))
+    for i, (p, k, lab, fn) in enumerate(FLOW_TOP):
+        s += flow_box(f"flowT{i}", i, FY[0], p, k, lab, fn)
+        if i < len(FLOW_TOP) - 1:
+            s += text(f"flowTa{i}", FX0 + i * FDX + FW + 1, FY[0] + 30, "→", size=14, bold=True)
+    for j, (p, k, lab, fn) in enumerate(FLOW_BOTTOM):
+        i = len(FLOW_BOTTOM) - 1 - j          # bottom row runs right to left
+        s += flow_box(f"flowB{j}", i, FY[1], p, k, lab, fn)
+        if i > 0:
+            s += text(f"flowBa{j}", FX0 + i * FDX - 13, FY[1] + 30, "←", size=14, bold=True)
+    last = FX0 + (len(FLOW_TOP) - 1) * FDX + FW // 2 - 6
+    s += text("flowDown", last, FY[0] + FH + 30, "↓", size=16, bold=True)
+    s += text("flowUp", FX0 + FW // 2 - 6, FY[0] + FH + 30, "↑  next cycle", size=12, bold=True)
+    for n, (i, p, k, lab, fn) in enumerate(FLOW_SIDE):
+        s += flow_box(f"flowS{n}", i, FY[2], p, k, lab, fn)
+    dec = FX0 + 6 * FDX + FW // 2 - 6
+    s += text("flowYes", dec, FY[1] + FH + 30, "↓ yes: exam, then back to 'Held at CD'    (no: continue ←)",
+              size=10, bold=True)
+    s += text("flowRelief", FX0 + 2 * FDX + FW + 8, FY[2] + 30, "any standing stage -> relief crew (A-09), then resumes",
+              size=10, col=color(90, 90, 90))
     return s
 
 

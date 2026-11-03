@@ -1416,6 +1416,26 @@ try {
 if (t >= cTipplers) return new java.awt.Color(110, 110, 110);
 return tipplerUsed[t] ? new java.awt.Color(60, 170, 80) : new java.awt.Color(215, 215, 215);
     }
+    /** Process-flow panel: number of rakes currently in cycle stage p (0..19). */
+    int flowCount(int p) {
+int n = 0;
+for (Rake r : rakes) if (r.phase == p) n++;
+return n;
+    }
+    /** Process-flow panel: live line of a stage box (-1 = BPC decision, -2 = cycle complete). */
+    String flowText(int p) {
+if (p == -1) return "BPC detours: " + bpcDetours;
+if (p == -2) return "cycles done: " + cyclesDone;
+return String.format(java.util.Locale.US, "now %d  |  avg %.1f h", flowCount(p), compMean(p));
+    }
+    /** Process-flow panel box colour: kind 0 queue (amber), 1 delay (blue), 2 seize (green), 3 decision / end (grey); stronger when a rake is in it. */
+    java.awt.Color flowColor(int p, int kind) {
+boolean busy = p >= 0 && flowCount(p) > 0;
+if (kind == 0) return busy ? new java.awt.Color(255, 196, 100) : new java.awt.Color(255, 238, 205);
+if (kind == 1) return busy ? new java.awt.Color(140, 185, 245) : new java.awt.Color(222, 234, 250);
+if (kind == 2) return busy ? new java.awt.Color(130, 205, 130) : new java.awt.Color(218, 242, 218);
+return new java.awt.Color(228, 228, 228);
+    }
     /** Loading siding k: amber = loading, red = loaded rake blocking it, light = free, dark = not provided. */
     java.awt.Color sidingColor(int k) {
 if (k >= cSidings) return new java.awt.Color(110, 110, 110);
