@@ -1,0 +1,2 @@
+date,train_no,direction,station,sched_time,actual_time,delay_min,cancelled,source_url
+2026-10-01,12723,DN,CD,13:23,13:49,26,N,https://etrain.info/train/Telangana-Exp-12723/history

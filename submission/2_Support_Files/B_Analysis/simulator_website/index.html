@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RakeFlow Simulator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <h1>RakeFlow</h1>
+      <p>Coal rake cycle · Ghugus → Tadali → Chandrapur · AnyLogic model</p>
+    </div>
+    <nav id="experiments" aria-label="Experiments">
+      <button data-exp="base">Baseline</button>
+      <button data-exp="A">A · Crew during loading</button>
+      <button data-exp="B">B · Third Ghugus loop</button>
+      <button data-exp="C">C · Loading silo</button>
+      <button data-exp="D">D · Line doubling</button>
+      <button data-exp="E">E · A + B + C</button>
+    </nav>
+  </header>
+
+  <main>
+    <aside class="panel" id="params">
+      <h2>Parameters</h2>
+      <div class="field">
+        <label>Fleet size (rakes)</label>
+        <div class="seg" data-param="f"><button data-v="6">6</button><button data-v="8">8</button><button data-v="10">10</button><button data-v="12">12</button></div>
+      </div>
+      <div class="field">
+        <label>Loops at Ghugus</label>
+        <div class="seg" data-param="l"><button data-v="2">2</button><button data-v="3">3</button></div>
+      </div>
+      <div class="field">
+        <label>Crew is ordered</label>
+        <div class="seg" data-param="c"><button data-v="0">When ready</button><button data-v="1">While loading</button></div>
+      </div>
+      <div class="field">
+        <label>Loading at Ghugus</label>
+        <div class="seg" data-param="r"><button data-v="0">Loader ~6 h</button><button data-v="1">Silo ~1.5 h</button></div>
+      </div>
+      <div class="field">
+        <label>Ghugus–Tadali line</label>
+        <div class="seg" data-param="d"><button data-v="0">Single</button><button data-v="1">Double</button></div>
+      </div>
+
+      <h2 class="gap">Animation</h2>
+      <div class="controls">
+        <button id="play" class="primary">Pause</button>
+        <button id="restart">Restart</button>
+      </div>
+      <div class="field">
+        <label>Speed (sim hours / second)</label>
+        <div class="seg" id="speed"><button data-v="0.25">¼</button><button data-v="1">1</button><button data-v="3">3</button><button data-v="8">8</button></div>
+      </div>
+      <dl class="live">
+        <div><dt>Simulated time</dt><dd id="clock">–</dd></div>
+        <div><dt>Rakes delivered (this run)</dt><dd id="delivered">0</dd></div>
+        <div><dt>Rakes/day (this run)</dt><dd id="rateLive">–</dd></div>
+      </dl>
+      <p class="note">Animation: one replication (seed 1). Results on the right: 30 replications.</p>
+    </aside>
+
+    <section class="stage">
+      <svg id="map" viewBox="20 18 1080 622" preserveAspectRatio="xMidYMin meet" role="img" aria-label="Animated map of the coal rake circuit"></svg>
+      <div class="legend">
+        <span><i class="sw loaded"></i>Loaded rake</span>
+        <span><i class="sw empty"></i>Empty rake</span>
+        <span><i class="sw pax"></i>Passenger train</span>
+        <span><i class="sw goods"></i>Goods train</span>
+      </div>
+    </section>
+
+    <aside class="panel" id="results">
+      <h2>Results <span class="sub">30 replications · 30 days · 95% CI</span></h2>
+      <div class="headline">
+        <div class="big" id="rRate">–</div>
+        <div class="label">rakes/day to the power station</div>
+        <div class="delta" id="rRateDelta"></div>
+      </div>
+      <div class="kpis">
+        <div><span>Coal delivered</span><b id="rTonnes">–</b></div>
+        <div><span>Mean cycle time</span><b id="rCycle">–</b></div>
+        <div><span>P90 cycle time</span><b id="rP90">–</b></div>
+        <div><span>Demurrage per rake</span><b id="rDem">–</b></div>
+        <div><span>Single line busy</span><b id="rLine">–</b></div>
+        <div><span>Lowest coal stock</span><b id="rStock">–</b></div>
+      </div>
+      <h3>Where a rake's cycle time goes</h3>
+      <div id="bars"></div>
+      <h3>All experiments</h3>
+      <table id="compare"><thead><tr><th></th><th>Rakes/day</th><th>Cycle</th></tr></thead><tbody></tbody></table>
+    </aside>
+  </main>
+
+  <script src="data/results.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

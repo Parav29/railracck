@@ -1,0 +1,2 @@
+date,siding,rake_id,wagons,placement_time,loading_start,loading_end,release_time,method,coal_tonnes,demurrage_hours,notes,source
+2026-10-01,Ghugus Old Siding,CC-01,58,05:05,05:20,11:40,12:05,pay-loader,3920,3.2,EXAMPLE ROW - delete,example

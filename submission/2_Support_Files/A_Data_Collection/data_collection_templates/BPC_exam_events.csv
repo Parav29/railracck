@@ -1,0 +1,2 @@
+date,rake_id,exam_depot,arrival_depot,placed_exam_line,exam_start,exam_end,wagons_detached,bpc_issued_time,bpc_validity_km,bpc_validity_days,notes,source
+2026-10-05,CC-01,Balharshah,22:10,06:30,06:45,14:50,1,15:10,6000,30,EXAMPLE ROW - delete,example
