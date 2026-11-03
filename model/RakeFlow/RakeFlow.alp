@@ -6,7 +6,7 @@
 -->
 <AnyLogicWorkspace WorkspaceVersion="1.9" AnyLogicVersion="8.9.9.202607020844" AlpVersion="8.9.9">
 <Model>
-<Id>1791000000486</Id>
+<Id>1791000000491</Id>
 <Name><![CDATA[RakeFlow]]></Name>
 <EngineVersion>6</EngineVersion>
 <JavaPackageName><![CDATA[rakeflow]]></JavaPackageName>
@@ -444,7 +444,7 @@ writeResults();]]></DestroyCode>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Description><![CDATA[0 = parameters as set; 1 RLS, 2 planned DN slot, 3 crew-critical priority, 4 Chandrapur lobby, 5 doubling, 6 tipplers 3, 7 tipplers 5, 8 loops +1, 9 crew +20%, 10 sidings +1, 11 no through goods, 12 alternating dispatch, 13 batched dispatch, 14 crew ordered at loading, 15/16/17 exam trigger 3/5/7 days left, 18 exam at expiry]]></Description>
+<Description><![CDATA[0 = parameters as set; 1 RLS, 2 planned DN slot, 3 crew-critical priority, 4 Chandrapur lobby, 5 doubling, 6 tipplers 3, 7 tipplers 5, 8 loops +1, 9 crew +20%, 10 sidings +1, 11 no through goods, 12 alternating dispatch, 13 batched dispatch, 14 crew ordered at loading, 15/16/17 exam trigger 3/5/7 days left, 18 exam at expiry; key experiments: 19 baseline, 20 crew during loading, 21 third Ghugus loop, 22 RLS silo, 23 doubling, 24 all three, 25 crew+loop, 26 crew+RLS, 27 loop+RLS]]></Description>
 <Properties SaveInSnapshot="true" ModificatorType="STATIC">
 <Type><![CDATA[int]]></Type>
 <UnitType><![CDATA[NONE]]></UnitType>
@@ -3186,6 +3186,16 @@ schedAt((warmupDays + runDays) * 24.0 - 1e-6, () -> writeResults());]]></Body>
     case 16: cBpcLook = 5; break;                        // exam trigger: 5 days left
     case 17: cBpcLook = 7; break;                        // exam trigger: 7 days left
     case 18: cBpcLook = 0; break;                        // exam trigger: at expiry
+    // ---- key experiments for the final presentation (19-27): same settings as model/harness/key_experiments.py ----
+    case 19: break;                                                  // baseline (same as 0)
+    case 20: cCrewAtLoad = true; break;                              // Exp 1 crew ordered during loading
+    case 21: cGgsLoops = 3; break;                                   // Exp 2 third loop at Ghugus
+    case 22: cRls = true; break;                                     // Exp 3 rapid loading silo
+    case 23: cDoubled = true; break;                                 // Exp 4 line doubling
+    case 24: cCrewAtLoad = true; cGgsLoops = 3; cRls = true; break;  // all three
+    case 25: cCrewAtLoad = true; cGgsLoops = 3; break;               // crew + loop
+    case 26: cCrewAtLoad = true; cRls = true; break;                 // crew + silo
+    case 27: cGgsLoops = 3; cRls = true; break;                      // loop + silo
     default: break;
 }]]></Body>
 </Function>
@@ -5015,16 +5025,35 @@ return new java.awt.Color(225, 225, 225);]]></Body>
 <ReturnModificator>RETURNS_VALUE</ReturnModificator>
 <ReturnType><![CDATA[String]]></ReturnType>
 <Id>1791000000472</Id>
-<Name><![CDATA[headerText]]></Name>
-<Description><![CDATA[Clock and configuration line on the Main view.]]></Description>
+<Name><![CDATA[scenarioName]]></Name>
+<Description><![CDATA[Short name of the active scenario preset (shown in the header line).]]></Description>
 <X>3180</X><Y>164</Y>
 <Label><X>10</X><Y>0</Y></Label>
 <PublicFlag>false</PublicFlag>
 <PresentationFlag>true</PresentationFlag>
 <ShowLabel>true</ShowLabel>
-<Body><![CDATA[return String.format(java.util.Locale.US, "%s  |  day %.2f  |  phase %d (%s)  |  scenario %d  |  fleet %d rakes  |  seed %d  |  %s",
+<Body><![CDATA[String[] names = { "parameters as set", "RLS silo", "planned DN slot", "crew-critical priority", "Chandrapur lobby",
+    "line doubling", "tipplers 3", "tipplers 5", "loops +1 GGS and TAE", "crew pool +20%", "sidings +1",
+    "no through goods", "alternating dispatch", "batched dispatch", "crew during loading", "exam 3 days early",
+    "exam 5 days early", "exam 7 days early", "exam at expiry", "baseline", "Exp 1 crew during loading",
+    "Exp 2 third Ghugus loop", "Exp 3 RLS silo", "Exp 4 line doubling", "all three (crew + loop + RLS)",
+    "crew + loop", "crew + RLS", "loop + RLS" };
+return scenario >= 0 && scenario < names.length ? names[scenario] : "?";]]></Body>
+</Function>
+<Function AccessType="default" StaticFunction="false">
+<ReturnModificator>RETURNS_VALUE</ReturnModificator>
+<ReturnType><![CDATA[String]]></ReturnType>
+<Id>1791000000473</Id>
+<Name><![CDATA[headerText]]></Name>
+<Description><![CDATA[Clock and configuration line on the Main view.]]></Description>
+<X>3180</X><Y>190</Y>
+<Label><X>10</X><Y>0</Y></Label>
+<PublicFlag>false</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>true</ShowLabel>
+<Body><![CDATA[return String.format(java.util.Locale.US, "%s  |  day %.2f  |  phase %d (%s)  |  scenario %d: %s  |  fleet %d rakes  |  seed %d  |  %s",
     stampText(time()), time() / 24, cPhase, cPhase == 1 ? "core cycle" : cPhase == 2 ? "+ crew clock" : "+ crew + BPC",
-    scenario, cFleet, seed, time() < statsStart || statsStart == 0 ? "WARM-UP (stats not yet collected)" : "collecting statistics");]]></Body>
+    scenario, scenarioName(), cFleet, seed, time() < statsStart || statsStart == 0 ? "WARM-UP (stats not yet collected)" : "collecting statistics");]]></Body>
 </Function>
 </Functions>
 <Presentation>
@@ -9055,12 +9084,12 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <RelativeAccuracy>1.0E-5</RelativeAccuracy>
 <TimeAccuracy>1.0E-5</TimeAccuracy>
 <Frame>
-<Id>1791000000487</Id>
+<Id>1791000000492</Id>
 <Width>1500</Width>
 <Height>950</Height>
 </Frame>
 <Database>
-<Id>1791000000488</Id>
+<Id>1791000000493</Id>
 <Logging>false</Logging>
 <AutoExport>false</AutoExport>
 <ShutdownCompact>false</ShutdownCompact>
@@ -9070,7 +9099,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </ExportSettings>
 </Database>
 <RunConfiguration ActiveObjectClassId="1791000000001">
-<Id>1791000000489</Id>
+<Id>1791000000494</Id>
 <Name><![CDATA[RunConfiguration]]></Name>
 <MaximumMemory>1024</MaximumMemory>
 <ModelTimeProperties>
@@ -9095,7 +9124,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 </RunConfiguration>
 <Experiments>
 <SimulationExperiment ActiveObjectClassId="1791000000001">
-<Id>1791000000473</Id>
+<Id>1791000000474</Id>
 <Name><![CDATA[Simulation]]></Name>
 <CommandLineArguments><![CDATA[]]></CommandLineArguments>
 <MaximumMemory>1024</MaximumMemory>
@@ -9149,7 +9178,7 @@ TAE-CD ~13 km (INF-08)]]></Text>
 <BypassInitialScreen>true</BypassInitialScreen>
 </SimulationExperiment>
 <ParamVariationExperiment ActiveObjectClassId="1791000000001">
-<Id>1791000000477</Id>
+<Id>1791000000478</Id>
 <Name><![CDATA[Replications30]]></Name>
 <AdditionalClassCode><![CDATA[static final String KEY_NAME = "phase";
 // Collected KPI rows, grouped by the value of the varied parameter shown in the summary.
@@ -9216,7 +9245,7 @@ save("RakeFlow_replications_summary.txt");]]></AfterSimulationRunCode>
 <LoadRootFromSnapshot>false</LoadRootFromSnapshot>
 <Presentation>
 <Text>
-<Id>1791000000474</Id>
+<Id>1791000000475</Id>
 <Name><![CDATA[expTitle]]></Name>
 <X>20</X><Y>20</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9237,7 +9266,7 @@ save("RakeFlow_replications_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000475</Id>
+<Id>1791000000476</Id>
 <Name><![CDATA[expNote]]></Name>
 <X>20</X><Y>46</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9258,7 +9287,7 @@ save("RakeFlow_replications_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000476</Id>
+<Id>1791000000477</Id>
 <Name><![CDATA[expSummary]]></Name>
 <X>20</X><Y>80</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9321,7 +9350,7 @@ save("RakeFlow_replications_summary.txt");]]></AfterSimulationRunCode>
 </ReplicationsProperties>
 </ParamVariationExperiment>
 <ParamVariationExperiment ActiveObjectClassId="1791000000001">
-<Id>1791000000481</Id>
+<Id>1791000000482</Id>
 <Name><![CDATA[E1_FleetSize]]></Name>
 <AdditionalClassCode><![CDATA[static final String KEY_NAME = "fleet";
 // Collected KPI rows, grouped by the value of the varied parameter shown in the summary.
@@ -9388,7 +9417,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 <LoadRootFromSnapshot>false</LoadRootFromSnapshot>
 <Presentation>
 <Text>
-<Id>1791000000478</Id>
+<Id>1791000000479</Id>
 <Name><![CDATA[expTitle]]></Name>
 <X>20</X><Y>20</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9409,7 +9438,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000479</Id>
+<Id>1791000000480</Id>
 <Name><![CDATA[expNote]]></Name>
 <X>20</X><Y>46</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9430,7 +9459,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000480</Id>
+<Id>1791000000481</Id>
 <Name><![CDATA[expSummary]]></Name>
 <X>20</X><Y>80</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9506,7 +9535,7 @@ save("RakeFlow_E1_fleet_summary.txt");]]></AfterSimulationRunCode>
 </ReplicationsProperties>
 </ParamVariationExperiment>
 <ParamVariationExperiment ActiveObjectClassId="1791000000001">
-<Id>1791000000485</Id>
+<Id>1791000000486</Id>
 <Name><![CDATA[E2toE7_Scenarios]]></Name>
 <AdditionalClassCode><![CDATA[static final String KEY_NAME = "scenario";
 // Collected KPI rows, grouped by the value of the varied parameter shown in the summary.
@@ -9573,7 +9602,7 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <LoadRootFromSnapshot>false</LoadRootFromSnapshot>
 <Presentation>
 <Text>
-<Id>1791000000482</Id>
+<Id>1791000000483</Id>
 <Name><![CDATA[expTitle]]></Name>
 <X>20</X><Y>20</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9594,7 +9623,7 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000483</Id>
+<Id>1791000000484</Id>
 <Name><![CDATA[expNote]]></Name>
 <X>20</X><Y>46</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9615,7 +9644,7 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <Alignment>LEFT</Alignment>
 </Text>
 <Text>
-<Id>1791000000484</Id>
+<Id>1791000000485</Id>
 <Name><![CDATA[expSummary]]></Name>
 <X>20</X><Y>80</Y>
 <Label><X>0</X><Y>-10</Y></Label>
@@ -9676,6 +9705,191 @@ save("RakeFlow_scenarios_summary.txt");]]></AfterSimulationRunCode>
 <PresentationProperties>
 <EnableZoomAndPanning>true</EnableZoomAndPanning>
 <Title><![CDATA[RakeFlow : E2toE7_Scenarios]]></Title>
+<EnableDeveloperPanel>true</EnableDeveloperPanel>
+<ShowDeveloperPanelOnStart>false</ShowDeveloperPanelOnStart>
+</PresentationProperties>
+<ReplicationsProperties>
+<UseReplication>false</UseReplication>
+<FixedReplicationsNumber>true</FixedReplicationsNumber>
+<ReplicationPerIteration>1</ReplicationPerIteration>
+<MinimumReplication>2</MinimumReplication>
+<MaximumReplication>30</MaximumReplication>
+<ConfidenceLevel>LEVEL_95</ConfidenceLevel>
+<ErrorPercent>0.5</ErrorPercent>
+<ExpressionForConfidenceComputation><![CDATA[0]]></ExpressionForConfidenceComputation>
+</ReplicationsProperties>
+</ParamVariationExperiment>
+<ParamVariationExperiment ActiveObjectClassId="1791000000001">
+<Id>1791000000490</Id>
+<Name><![CDATA[KeyExperiments]]></Name>
+<AdditionalClassCode><![CDATA[static final String KEY_NAME = "scenario";
+// Collected KPI rows, grouped by the value of the varied parameter shown in the summary.
+java.util.TreeMap<Integer, java.util.ArrayList<double[]>> byKey = new java.util.TreeMap<Integer, java.util.ArrayList<double[]>>();
+static final String[] KPI = { "rakes/day", "cycle h", "P90 cycle h", "line util", "siding util", "tippler util", "demurrage Rs/rake",
+                              "relief share", "BPC share", "stock min days", "merge queue", "expiries/100", "exam h/rake/mo" };
+
+double tCrit(int df) {
+    final double[] t = { 12.706, 4.303, 3.182, 2.776, 2.571, 2.447, 2.365, 2.306, 2.262, 2.228, 2.201, 2.179, 2.160, 2.145,
+                         2.131, 2.120, 2.110, 2.101, 2.093, 2.086, 2.080, 2.074, 2.069, 2.064, 2.060, 2.056, 2.052, 2.048, 2.045 };
+    return df < 1 ? 0 : (df <= t.length ? t[df - 1] : 2.0);
+}
+
+void collect(int key, Main m) {
+    double[] r = { m.rakesPerDay(), m.meanCycle(), m.p90Cycle(), m.lineUtil(), m.sidingUtil(), m.tipplerUtil(), m.demurragePerRake(),
+                   m.shareRelief(), m.shareBpc(), m.stockMinDays, m.mergeQueueAvg(), m.crewExpiriesPer100(), m.examHoursPerRakeMonth() };
+    if (!byKey.containsKey(key)) byKey.put(key, new java.util.ArrayList<double[]>());
+    byKey.get(key).add(r);
+}
+
+String summaryText() {
+    if (byKey.isEmpty()) return "Press Run. Each run uses parameter seed, so all keys share the same random numbers.";
+    StringBuilder sb = new StringBuilder(String.format("%-8s %4s", KEY_NAME, "n"));
+    for (String k : KPI) sb.append(String.format("  %18s", k));
+    sb.append("\n");
+    for (java.util.Map.Entry<Integer, java.util.ArrayList<double[]>> e : byKey.entrySet()) {
+        java.util.ArrayList<double[]> rows = e.getValue();
+        int n = rows.size();
+        sb.append(String.format("%-8d %4d", e.getKey(), n));
+        for (int k = 0; k < KPI.length; k++) {
+            double m = 0, v = 0;
+            for (double[] r : rows) m += r[k];
+            m /= n;
+            for (double[] r : rows) v += (r[k] - m) * (r[k] - m);
+            double hw = n > 1 ? tCrit(n - 1) * Math.sqrt(v / (n - 1)) / Math.sqrt(n) : 0;
+            sb.append(String.format(java.util.Locale.US, "  %9.3f +-%6.3f", m, hw));
+        }
+        sb.append("\n");
+    }
+    return sb.toString();
+}
+
+void save(String file) {
+    try {
+        java.io.PrintWriter w = new java.io.PrintWriter(new java.io.FileWriter(file, false));
+        w.println("Mean +- 95% CI half-width (t), " + KEY_NAME + " as rows. Every run is also appended to RakeFlow_runs.csv.");
+        w.print(summaryText());
+        w.close();
+    } catch (Exception ex) {
+        traceln("Could not write " + file + ": " + ex);
+    }
+}
+]]></AdditionalClassCode>
+<CommandLineArguments><![CDATA[]]></CommandLineArguments>
+<MaximumMemory>1024</MaximumMemory>
+<RandomNumberGenerationType>fixedSeed</RandomNumberGenerationType>
+<CustomGeneratorCode>new Random()</CustomGeneratorCode>
+<BeforeEachExperimentRunCode><![CDATA[byKey.clear();]]></BeforeEachExperimentRunCode>
+<AfterSimulationRunCode><![CDATA[collect(root.scenario, root);
+save("RakeFlow_key_experiments_summary.txt");]]></AfterSimulationRunCode>
+<SeedValue>1</SeedValue>
+<SelectionModeForSimultaneousEvents>LIFO</SelectionModeForSimultaneousEvents>
+<VmArgs><![CDATA[]]></VmArgs>
+<LoadRootFromSnapshot>false</LoadRootFromSnapshot>
+<Presentation>
+<Text>
+<Id>1791000000487</Id>
+<Name><![CDATA[expTitle]]></Name>
+<X>20</X><Y>20</Y>
+<Label><X>0</X><Y>-10</Y></Label>
+<PublicFlag>true</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>false</ShowLabel>
+<DrawMode>SHAPE_DRAW_2D</DrawMode>
+<EmbeddedIcon>false</EmbeddedIcon>
+<Z>0</Z>
+<Rotation>0.0</Rotation>
+<Color>-15124626</Color>
+<Text><![CDATA[Key experiments x 30 seeds: 19 baseline, 20 crew during loading, 21 3rd Ghugus loop, 22 RLS silo, 23 doubling, 24 all three, 25 crew+loop, 26 crew+RLS, 27 loop+RLS]]></Text>
+<Font>
+<Name>SansSerif</Name>
+<Size>16</Size>
+<Style>1</Style>
+</Font>
+<Alignment>LEFT</Alignment>
+</Text>
+<Text>
+<Id>1791000000488</Id>
+<Name><![CDATA[expNote]]></Name>
+<X>20</X><Y>46</Y>
+<Label><X>0</X><Y>-10</Y></Label>
+<PublicFlag>true</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>false</ShowLabel>
+<DrawMode>SHAPE_DRAW_2D</DrawMode>
+<EmbeddedIcon>false</EmbeddedIcon>
+<Z>0</Z>
+<Rotation>0.0</Rotation>
+<Color>-14145496</Color>
+<Text><![CDATA[Each run: 3 days warm-up + 30 days statistics (brief 4.1). Common random numbers via parameter seed.]]></Text>
+<Font>
+<Name>SansSerif</Name>
+<Size>11</Size>
+<Style>0</Style>
+</Font>
+<Alignment>LEFT</Alignment>
+</Text>
+<Text>
+<Id>1791000000489</Id>
+<Name><![CDATA[expSummary]]></Name>
+<X>20</X><Y>80</Y>
+<Label><X>0</X><Y>-10</Y></Label>
+<PublicFlag>true</PublicFlag>
+<PresentationFlag>true</PresentationFlag>
+<ShowLabel>false</ShowLabel>
+<DrawMode>SHAPE_DRAW_2D</DrawMode>
+<EmbeddedIcon>false</EmbeddedIcon>
+<Z>0</Z>
+<Rotation>0.0</Rotation>
+<Color>-14145496</Color>
+<Text><![CDATA[-]]></Text>
+<TextCode><![CDATA[summaryText()]]></TextCode>
+<Font>
+<Name>Monospaced</Name>
+<Size>11</Size>
+<Style>0</Style>
+</Font>
+<Alignment>LEFT</Alignment>
+</Text>
+</Presentation>
+<AllowParallelEvaluations>false</AllowParallelEvaluations>
+<UseFreeformParameters>false</UseFreeformParameters>
+<NumberOfRuns>10</NumberOfRuns>
+<RangeVariationParamValue>
+<Id>1791000000007</Id>
+<Type>RANGE</Type>
+<From Class="CodeValue">
+<Code><![CDATA[19]]></Code>
+</From>
+<To Class="CodeValue">
+<Code><![CDATA[27]]></Code>
+</To>
+<Step Class="CodeValue">
+<Code><![CDATA[1]]></Code>
+</Step>
+</RangeVariationParamValue>
+<RangeVariationParamValue>
+<Id>1791000000003</Id>
+<Type>RANGE</Type>
+<From Class="CodeValue">
+<Code><![CDATA[1]]></Code>
+</From>
+<To Class="CodeValue">
+<Code><![CDATA[30]]></Code>
+</To>
+<Step Class="CodeValue">
+<Code><![CDATA[1]]></Code>
+</Step>
+</RangeVariationParamValue>
+<ModelTimeProperties>
+<StopOption><![CDATA[Stop at specified time]]></StopOption>
+<InitialDate><![CDATA[1791138600000]]></InitialDate>
+<InitialTime><![CDATA[0.0]]></InitialTime>
+<FinalDate><![CDATA[1793989800000]]></FinalDate>
+<FinalTime><![CDATA[792.0]]></FinalTime>
+</ModelTimeProperties>
+<PresentationProperties>
+<EnableZoomAndPanning>true</EnableZoomAndPanning>
+<Title><![CDATA[RakeFlow : KeyExperiments]]></Title>
 <EnableDeveloperPanel>true</EnableDeveloperPanel>
 <ShowDeveloperPanelOnStart>false</ShowDeveloperPanelOnStart>
 </PresentationProperties>

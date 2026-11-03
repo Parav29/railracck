@@ -18,7 +18,9 @@ model/
 2. Projects tree -> RakeFlow -> **Simulation** -> Run (green arrow). One animated replication, seed 1,
    33 days (3 warm-up + 30). Speed it up with the toolbar or switch to virtual time.
 3. Multi-run experiments (Parameter Variation, PLE allows them): **Replications30** (seeds 1-30),
-   **E1_FleetSize** (4-20 rakes x 10 seeds), **E2toE7_Scenarios** (scenarios 0-18 x 10 seeds). Each shows a
+   **E1_FleetSize** (4-20 rakes x 10 seeds), **E2toE7_Scenarios** (scenarios 0-18 x 10 seeds), **KeyExperiments**
+   (scenarios 19-27 x 30 seeds: baseline, crew during loading, third Ghugus loop, RLS, doubling, all three, the pairs;
+   reproduces `results/key_experiments.md`). Each shows a
    mean +- 95% CI table (rakes/day, mean and P90 cycle, utilisations, demurrage, Tadali queue, crew expiries per 100
    trips, exam h/rake/month) and writes a `*_summary.txt`.
 4. Every run appends a KPI row to `model/RakeFlow/RakeFlow_runs.csv`; the Simulation run also writes

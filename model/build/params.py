@@ -8,7 +8,7 @@ GROUPS = [
     ("Run control", [
         ("seed", "int", "1", "Random seed for the model's own stream (common random numbers across scenarios)"),
         ("modelPhase", "int", "3", "1 = core cycle, 2 = + crew duty clock, 3 = + BPC exam detours (full)"),
-        ("scenario", "int", "0", "0 = parameters as set; 1 RLS, 2 planned DN slot, 3 crew-critical priority, 4 Chandrapur lobby, 5 doubling, 6 tipplers 3, 7 tipplers 5, 8 loops +1, 9 crew +20%, 10 sidings +1, 11 no through goods, 12 alternating dispatch, 13 batched dispatch, 14 crew ordered at loading, 15/16/17 exam trigger 3/5/7 days left, 18 exam at expiry"),
+        ("scenario", "int", "0", "0 = parameters as set; 1 RLS, 2 planned DN slot, 3 crew-critical priority, 4 Chandrapur lobby, 5 doubling, 6 tipplers 3, 7 tipplers 5, 8 loops +1, 9 crew +20%, 10 sidings +1, 11 no through goods, 12 alternating dispatch, 13 batched dispatch, 14 crew ordered at loading, 15/16/17 exam trigger 3/5/7 days left, 18 exam at expiry; key experiments: 19 baseline, 20 crew during loading, 21 third Ghugus loop, 22 RLS silo, 23 doubling, 24 all three, 25 crew+loop, 26 crew+RLS, 27 loop+RLS"),
         ("warmupDays", "double", "3", "Warm-up discarded from statistics (brief 4.1)"),
         ("runDays", "double", "30", "Statistics window after warm-up (brief 4.1); the experiment stop time is warm-up + run"),
         ("writeCycleLog", "boolean", "true", "Write RAKE_cycle_log_sim.csv (template data/templates/RAKE_cycle_log.csv) and RakeFlow_runs.csv"),

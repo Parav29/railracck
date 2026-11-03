@@ -606,6 +606,9 @@ def build():
     experiments += param_variation("E2toE7_Scenarios", "Scenarios 0-18 (E2 RLS, E3 path policy, E4 lobby, E5 doubling, E6 tipplers, E7 +20%, dispatch, crew timing, exam trigger) x 10 seeds",
                                    [("scenario", 0, 18, 1), ("seed", 1, 10, 1)], "root.scenario", "scenario",
                                    "RakeFlow_scenarios_summary.txt")
+    experiments += param_variation("KeyExperiments", "Key experiments x 30 seeds: 19 baseline, 20 crew during loading, 21 3rd Ghugus loop, 22 RLS silo, 23 doubling, 24 all three, 25 crew+loop, 26 crew+RLS, 27 loop+RLS",
+                                   [("scenario", 19, 27, 1), ("seed", 1, 30, 1)], "root.scenario", "scenario",
+                                   "RakeFlow_key_experiments_summary.txt")
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!--
 *************************************************

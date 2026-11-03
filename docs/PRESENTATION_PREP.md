@@ -248,3 +248,40 @@ fixes this.
 18 Proposal scenarios -> 19 Sensitivity -> 20 Scorecard -> 21 Recommendations -> 22 Close.
 
 If short on time, skip 8, 11, 17 and 19 and keep them for questions.
+
+---
+
+## 11. Live demo in AnyLogic (practise this once before the presentation)
+
+**Before you present:** open `model/RakeFlow/RakeFlow.alp` in AnyLogic 8.9.9 and run **KeyExperiments** once so you
+know it works and how long it takes (270 runs, no animation).
+
+**Demo A - the animated model (2 min)**
+1. Projects tree -> RakeFlow -> **Simulation**. In its Properties -> Parameters set `scenario = 19` (baseline).
+2. Press Run. Show the rakes moving: Ghugus loops and sidings on the left, the single line, Tadali, the main line
+   with passenger trains (blue) and goods trains (grey), CSTPS tipplers at the bottom. The header line names the
+   scenario; the KPI panel shows rakes/day, cycle time, demurrage live. Speed it up with the speed slider.
+3. Stop, set `scenario = 24` (all three changes), run again: rakes/day climbs towards ~7.8 instead of ~4.8.
+
+**Demo B - the experiment that produced the slide numbers**
+1. Projects tree -> **KeyExperiments** -> Run. It runs scenarios 19-27 with seeds 1-30 each.
+2. The table shows, per scenario, mean +- 95% CI of rakes/day, cycle, P90 cycle, utilisations, demurrage, crew
+   expiries, exam hours. It is also saved as `RakeFlow_key_experiments_summary.txt`.
+3. Rakes/day you should see (same seeds as the slides, so the numbers match):
+
+| Scenario | Case | Rakes/day | Cycle h |
+|---|---|---|---|
+| 19 | Baseline | 4.77 | 40.3 |
+| 20 | Exp 1 crew booked during loading | 5.77 | 33.3 |
+| 21 | Exp 2 third Ghugus loop | 5.77 | 33.3 |
+| 22 | Exp 3 rapid loading silo | 5.12 | 37.5 |
+| 23 | Exp 4 line doubling | 4.88 | 39.4 |
+| 24 | All three | 7.76 | 24.7 |
+| 25 / 26 / 27 | crew + loop / crew + silo / loop + silo | 6.37 / 6.76 / 6.74 | 30.1 / 28.4 / 28.4 |
+
+Other ready experiments: **Replications30** (baseline, 30 seeds), **E1_FleetSize** (4-20 rakes), **E2toE7_Scenarios**
+(scenarios 0-18: proposal what-ifs, levers).
+
+**If asked "did you run this in AnyLogic?"** Yes - the logic lives in the AnyLogic model. For the many hundreds of
+runs we also ran the identical Java code from a script (the test harness) to check every rule after every event; the
+same seed gives the same result in both, which is itself a verification step.

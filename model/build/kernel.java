@@ -293,6 +293,16 @@ switch (s) {
     case 16: cBpcLook = 5; break;                        // exam trigger: 5 days left
     case 17: cBpcLook = 7; break;                        // exam trigger: 7 days left
     case 18: cBpcLook = 0; break;                        // exam trigger: at expiry
+    // ---- key experiments for the final presentation (19-27): same settings as model/harness/key_experiments.py ----
+    case 19: break;                                                  // baseline (same as 0)
+    case 20: cCrewAtLoad = true; break;                              // Exp 1 crew ordered during loading
+    case 21: cGgsLoops = 3; break;                                   // Exp 2 third loop at Ghugus
+    case 22: cRls = true; break;                                     // Exp 3 rapid loading silo
+    case 23: cDoubled = true; break;                                 // Exp 4 line doubling
+    case 24: cCrewAtLoad = true; cGgsLoops = 3; cRls = true; break;  // all three
+    case 25: cCrewAtLoad = true; cGgsLoops = 3; break;               // crew + loop
+    case 26: cCrewAtLoad = true; cRls = true; break;                 // crew + silo
+    case 27: cGgsLoops = 3; cRls = true; break;                      // loop + silo
     default: break;
 }
 //@end
@@ -1275,9 +1285,20 @@ for (Rake r : rakes) if (r.sidingNo == k && r.onSiding) return r.phase == P_LOAD
 return new java.awt.Color(225, 225, 225);
 //@end
 
+//@fn String scenarioName()
+//@doc Short name of the active scenario preset (shown in the header line).
+String[] names = { "parameters as set", "RLS silo", "planned DN slot", "crew-critical priority", "Chandrapur lobby",
+    "line doubling", "tipplers 3", "tipplers 5", "loops +1 GGS and TAE", "crew pool +20%", "sidings +1",
+    "no through goods", "alternating dispatch", "batched dispatch", "crew during loading", "exam 3 days early",
+    "exam 5 days early", "exam 7 days early", "exam at expiry", "baseline", "Exp 1 crew during loading",
+    "Exp 2 third Ghugus loop", "Exp 3 RLS silo", "Exp 4 line doubling", "all three (crew + loop + RLS)",
+    "crew + loop", "crew + RLS", "loop + RLS" };
+return scenario >= 0 && scenario < names.length ? names[scenario] : "?";
+//@end
+
 //@fn String headerText()
 //@doc Clock and configuration line on the Main view.
-return String.format(java.util.Locale.US, "%s  |  day %.2f  |  phase %d (%s)  |  scenario %d  |  fleet %d rakes  |  seed %d  |  %s",
+return String.format(java.util.Locale.US, "%s  |  day %.2f  |  phase %d (%s)  |  scenario %d: %s  |  fleet %d rakes  |  seed %d  |  %s",
     stampText(time()), time() / 24, cPhase, cPhase == 1 ? "core cycle" : cPhase == 2 ? "+ crew clock" : "+ crew + BPC",
-    scenario, cFleet, seed, time() < statsStart || statsStart == 0 ? "WARM-UP (stats not yet collected)" : "collecting statistics");
+    scenario, scenarioName(), cFleet, seed, time() < statsStart || statsStart == 0 ? "WARM-UP (stats not yet collected)" : "collecting statistics");
 //@end
